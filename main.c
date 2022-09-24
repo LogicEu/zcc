@@ -16,24 +16,51 @@ typedef struct ptu_t {
 
 static inline size_t eatblock(const char* str, const char ch, const size_t end, size_t i)
 {
-    if (str[i] == ch) {
-        while (i + 1 < end && str[i + 1] != ch) { ++i; } 
-    }
-    return i;
+    while (i + 1 < end && str[i + 1] != ch) { ++i; } 
+    return i + 1;
 }
 
-static void ptu_print_lines(ptu_t* ptu)
+static inline void printrng(const char* str, const range_t range)
 {
-    range_t* r = ptu->lines.data;
-    const size_t linecount = ptu->lines.size;
-    for (size_t i = 0; i < linecount; ++i) {
-        const size_t end = r[i].end;
-        printf("'");
-        for (size_t j = r[i].start; j < end; j++) {
-            printf("%c", ptu->text.data[j]);
-        }
-        printf("'\n");
+    for (size_t i = range.start; i < range.end; ++i) {
+        putchar(str[i]);
     }
+}
+
+static void ptu_print_lines(const ptu_t* ptu)
+{
+    const range_t* r = ptu->lines.data;
+    const size_t count = ptu->lines.size;
+    for (size_t i = 0; i < count; ++i) {
+        putchar('\'');
+        printrng(ptu->text.data, r[i]);
+        putchar('\'');
+        putchar('\n');
+    }
+}
+
+static void ptu_print_tokens(const ptu_t* ptu)
+{
+    size_t i, j;
+    const size_t count = ptu->tokens.size;
+    const range_t* r = ptu->tokens.data, *l = ptu->lines.data;
+    for (i = 0, j = 0; i < count; ++i) {
+        putchar('"');
+        printrng(ptu->text.data, r[i]); 
+        if (r[i].end >= l[j].end) {
+            ++j;
+            putchar('"');
+            putchar('\n');
+        }
+        else putchar(' ');
+    }
+}
+
+static void ptu_free(ptu_t* ptu)
+{
+    string_free(&ptu->text);
+    array_free(&ptu->lines);
+    array_free(&ptu->tokens);
 }
 
 static void ptu_splice_lines(ptu_t* ptu)
@@ -57,54 +84,146 @@ static void ptu_splice_lines(ptu_t* ptu)
     array_push(&ptu->lines, &r);
 }
 
+#define ISNONE(c) (((c) == ' ') || ((c) == '\n') || ((c) == '\t'))
+#define ISSTR(c) (((c) == '\'') || ((c) == '"'))
+#define ISBETWEEN(c, a, b) (((c) >= (a)) && ((c) <= (b)))
+#define ISNUM(c) ISBETWEEN(c, '0', '9')
+#define ISID(c) (ISBETWEEN(c, 'A', 'Z') || ISBETWEEN(c, 'a', 'z') || ((c) == '_'))
+#define ISSYMBOL(c) (ISBETWEEN(c, 33, 127) && !ISNUM(c) && !ISID(c))
+
+static size_t eatsymbol(const char* str, const size_t i)
+{
+    size_t j = 1;
+    switch(str[i]) {
+    case '#':
+        j += (str[i + 1] == str[i]);
+        break;
+    case '-':
+        j += (str[i + 1] == '>');
+    case '|':
+    case '&':
+    case '+':
+        j += (str[i + 1] == str[i]);
+    case '!':
+    case '%':
+    case '^':
+    case '~':
+    case '*':
+    case '/':
+    case '=':
+        j += (str[i + 1] == '=');
+        break;
+    case '<':
+    case '>':
+        j += (str[i + j] == str[i]);
+        j += (str[i + j] == '=');
+        break;
+    }
+    return i + j;
+}
+
+static void ptu_splice_tokens(ptu_t* ptu)
+{
+    char c;
+    const char* s = ptu->text.data;
+    range_t r = {0, 0};
+    for (size_t i = 0; s[i]; ++i) {
+        if (ISNONE(s[i])) {
+            while (s[i] && ISNONE(s[i])) {
+                ++i;
+            }
+            --i;
+            continue;
+        }
+        else if (ISID(s[i])) {
+            while (s[i] && (ISID(s[i]) || ISNUM(s[i]))) {
+                ++i;
+            }
+        }
+        else if (ISNUM(s[i]) || (s[i] == '.' && ISNUM(s[i + 1]))) {
+            while (s[i] && (ISNUM(s[i]) || ISID(s[i]) || s[i] == '.')) {
+                ++i;
+            }
+        }
+        else if (ISSTR(s[i])) {
+            c = s[i];
+            while (s[i] && s[i] != c) {
+                ++i;
+            } 
+        }
+        else if (ISSYMBOL(s[i])) {
+            i = eatsymbol(s, i);
+        }
+        else {
+            while (s[i] && !ISNONE(s[i])) {
+                ++i;
+            }
+        }
+
+        r.end = i;
+        array_push(&ptu->tokens, &r);
+        r.start = i--;
+    }
+}
+
+/* needs more error checking for block closures */
 static void ptu_preprocess_text(ptu_t* ptu)
 {
     ptu_splice_lines(ptu);
-
-    range_t* ranges = ptu->lines.data, r;
-    for (size_t i = 0, dif = 0; i < ptu->lines.size; ++i) {
-        
-        ranges[i].start -= dif;
-        ranges[i].end -= dif;
-        
-        for (size_t j = ranges[i].start; j < ranges[i].end; ++j) {
-            
-            j = eatblock(ptu->text.data, '\'', ranges[i].end, j);
-            j = eatblock(ptu->text.data, '"', ranges[i].end, j);
-            
-            if (ptu->text.data[j] == '/') {
-                if (ptu->text.data[j + 1] == '/') {
-                    string_remove_range(&ptu->text, j, ranges[i].end);
-                    dif += ranges[i].end - j;
-                    ranges[i].end = j;
-                }
-                else if (ptu->text.data[j + 1] == '*') {
-                    char* s = strstr(ptu->text.data + j + 2, "*/");
-                    if (!s) {
-                        printf("'' comment is not closed at line %zu\n", i + 1);
-                        return;
-                    }
-                    
-                    const size_t n = s - (ptu->text.data + j) + 2;
-                    string_remove_range(&ptu->text, j + 1, j + n);
-                    ptu->text.data[j] = ' ';
-                    dif += n - 1;
-
-                    r = ranges[i];
-                    for (size_t k = i; k < ptu->lines.size; ++k) {
-                        if (ranges[k].end >= j + n) {
-                            ranges[i].end = ranges[k].end - dif;
-                            ranges[i].start = r.start;
-                            break;
-                        } 
-                        else array_remove(&ptu->lines, k--);
-                    }
-                    
-                    break;
-                }
+    
+    char* s = ptu->text.data, *t;
+    size_t i, j, k, d, n;
+    range_t* r = ptu->lines.data;
+    for (i = 0, j = 0, d = 0; s[i]; ++i) {
+        n = 0; 
+        switch (s[i]) {
+        case '"':
+            i = eatblock(s, s[i], r[j].end, i);
+            break;
+        case '\'':
+            if (i > 0 && s[i - 1] != '\'') {
+                i = eatblock(s, s[i], r[j].end, i);
             }
+            break;
+        case '/':
+            if (s[i + 1] == '/') {
+                string_remove_range(&ptu->text, i, r[j].end);
+                d += r[j].end - i;
+                r[j].end = i;
+            }
+            else if (s[i + 1] == '*') {
+                t = strstr(s + i + 2, "*/");
+                if (!t) {
+                    printf("Comment is not closed on line %zu.\n", j + 1);
+                    return ptu_free(ptu);
+                }
+                
+                n = t - (s + i) + 2;
+                string_remove_range(&ptu->text, i + 1, i + n);
+                s[i] = ' ';
+
+                k = j;
+                while (i + n > r[k].end) {
+                    ++k;
+                    r[k].end -= d;
+                }
+               
+                d += n - 1;
+                r[k].start = r[j].start;
+                r[k].end -= n - 1;
+                array_remove_block(&ptu->lines, j, k);
+            }
+            break;
         }
+
+        if (!n && i >= r[j].end) {
+            r[++j].start -= d;
+            r[j].end -= d;
+        }
+
     }
+
+    //ptu_splice_tokens(ptu);
 }
 
 static ptu_t ptu_read(const char* filename)
@@ -131,13 +250,6 @@ static ptu_t ptu_read(const char* filename)
     ptu.text.size = size;
     ptu_preprocess_text(&ptu);
     return ptu;
-}
-
-static void ptu_free(ptu_t* ptu)
-{
-    string_free(&ptu->text);
-    array_free(&ptu->lines);
-    array_free(&ptu->tokens);
 }
 
 int main(const int argc, const char** argv)
@@ -168,9 +280,14 @@ int main(const int argc, const char** argv)
         ptu_t ptu = ptu_read(filepaths[i]);
         if (ptu.text.size) {
             ptu_print_lines(&ptu);
+            //ptu_print_tokens(&ptu);
         }
         ptu_free(&ptu);
     }
+
+    int/* helo */a;
+    int/* hdhdhdhd
+          hhd */b = 10;
 
 exit:
     array_free(&infiles);
