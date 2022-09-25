@@ -54,18 +54,15 @@ static void ptu_print_tokens(const ptu_t* ptu)
     const size_t count = ptu->tokens.size;
     const range_t* r = ptu->tokens.data, *l = ptu->lines.data;
     for (i = 0, j = 0; i < count; ++i) {
+        while (r[i].start >= l[j].end) {
+            ++j;
+        }
 
         putchar('\'');
         printrng(ptu->text.data, r[i]); 
         putchar('\'');
+        putchar(r[i].end >= l[j].end ? '\n' : ' ');
 
-       
-        if (r[i].end >= l[j].end) {
-            putchar('\n');
-            ++j;
-        }
-        else putchar(' ');
-        
     }
 }
 
