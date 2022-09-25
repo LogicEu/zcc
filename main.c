@@ -3,6 +3,13 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define ISNONE(c) (((c) == ' ') || ((c) == '\n') || ((c) == '\t'))
+#define ISSTR(c) (((c) == '\'') || ((c) == '"'))
+#define ISBETWEEN(c, a, b) (((c) >= (a)) && ((c) <= (b)))
+#define ISNUM(c) ISBETWEEN(c, '0', '9')
+#define ISID(c) (ISBETWEEN(c, 'A', 'Z') || ISBETWEEN(c, 'a', 'z') || ((c) == '_'))
+#define ISSYMBOL(c) (ISBETWEEN(c, 33, 126) && !ISNUM(c) && !ISID(c))
+
 typedef struct range_t {
     size_t start, end;
 } range_t;
@@ -16,7 +23,9 @@ typedef struct ptu_t {
 
 static inline size_t eatblock(const char* str, const char ch, const size_t end, size_t i)
 {
-    while (i + 1 < end && str[i + 1] != ch) { ++i; } 
+    while (i + 1 < end && str[i + 1] != ch) { 
+        i += (str[i + 1] == '\\') + 1;
+    } 
     return i + 1;
 }
 
@@ -45,14 +54,18 @@ static void ptu_print_tokens(const ptu_t* ptu)
     const size_t count = ptu->tokens.size;
     const range_t* r = ptu->tokens.data, *l = ptu->lines.data;
     for (i = 0, j = 0; i < count; ++i) {
-        putchar('"');
+
+        putchar('\'');
         printrng(ptu->text.data, r[i]); 
+        putchar('\'');
+
+       
         if (r[i].end >= l[j].end) {
-            ++j;
-            putchar('"');
             putchar('\n');
+            ++j;
         }
         else putchar(' ');
+        
     }
 }
 
@@ -83,13 +96,6 @@ static void ptu_splice_lines(ptu_t* ptu)
     r.end = i;
     array_push(&ptu->lines, &r);
 }
-
-#define ISNONE(c) (((c) == ' ') || ((c) == '\n') || ((c) == '\t'))
-#define ISSTR(c) (((c) == '\'') || ((c) == '"'))
-#define ISBETWEEN(c, a, b) (((c) >= (a)) && ((c) <= (b)))
-#define ISNUM(c) ISBETWEEN(c, '0', '9')
-#define ISID(c) (ISBETWEEN(c, 'A', 'Z') || ISBETWEEN(c, 'a', 'z') || ((c) == '_'))
-#define ISSYMBOL(c) (ISBETWEEN(c, 33, 127) && !ISNUM(c) && !ISID(c))
 
 static size_t eatsymbol(const char* str, const size_t i)
 {
@@ -124,45 +130,32 @@ static size_t eatsymbol(const char* str, const size_t i)
 
 static void ptu_splice_tokens(ptu_t* ptu)
 {
-    char c;
-    const char* s = ptu->text.data;
     range_t r = {0, 0};
+    const char* s = ptu->text.data;
     for (size_t i = 0; s[i]; ++i) {
-        if (ISNONE(s[i])) {
-            while (s[i] && ISNONE(s[i])) {
-                ++i;
-            }
-            --i;
-            continue;
-        }
-        else if (ISID(s[i])) {
-            while (s[i] && (ISID(s[i]) || ISNUM(s[i]))) {
-                ++i;
-            }
+        
+        r.start = i;
+        
+        if (ISSTR(s[i])) {
+            i = eatblock(s, s[i], ptu->text.size, i) + 1;
         }
         else if (ISNUM(s[i]) || (s[i] == '.' && ISNUM(s[i + 1]))) {
             while (s[i] && (ISNUM(s[i]) || ISID(s[i]) || s[i] == '.')) {
                 ++i;
             }
         }
-        else if (ISSTR(s[i])) {
-            c = s[i];
-            while (s[i] && s[i] != c) {
-                ++i;
-            } 
-        }
-        else if (ISSYMBOL(s[i])) {
-            i = eatsymbol(s, i);
-        }
-        else {
-            while (s[i] && !ISNONE(s[i])) {
+        else if (ISID(s[i])) {
+            while (s[i] && (ISID(s[i]) || ISNUM(s[i]))) {
                 ++i;
             }
         }
+        else if (!ISNONE(s[i])) {
+            i = eatsymbol(s, i);
+        }
+        else continue;
 
-        r.end = i;
+        r.end = i--;
         array_push(&ptu->tokens, &r);
-        r.start = i--;
     }
 }
 
@@ -178,12 +171,8 @@ static void ptu_preprocess_text(ptu_t* ptu)
         n = 0; 
         switch (s[i]) {
         case '"':
-            i = eatblock(s, s[i], r[j].end, i);
-            break;
         case '\'':
-            if (i > 0 && s[i - 1] != '\'') {
-                i = eatblock(s, s[i], r[j].end, i);
-            }
+            i = eatblock(s, s[i], r[j].end, i) + 1;
             break;
         case '/':
             if (s[i + 1] == '/') {
@@ -223,7 +212,7 @@ static void ptu_preprocess_text(ptu_t* ptu)
 
     }
 
-    //ptu_splice_tokens(ptu);
+    ptu_splice_tokens(ptu);
 }
 
 static ptu_t ptu_read(const char* filename)
@@ -280,17 +269,13 @@ int main(const int argc, const char** argv)
         ptu_t ptu = ptu_read(filepaths[i]);
         if (ptu.text.size) {
             ptu_print_lines(&ptu);
-            //ptu_print_tokens(&ptu);
+            ptu_print_tokens(&ptu);
         }
         ptu_free(&ptu);
     }
 
-    int/* helo */a;
-    int/* hdhdhdhd
-          hhd */b = 10;
-
 exit:
     array_free(&infiles);
     array_free(&includes);
-    return status;
+    return status ;
 }
