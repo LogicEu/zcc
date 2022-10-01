@@ -1,6 +1,6 @@
 # eulang makefile
 
-SRC = *.c
+SRC = src/*.c
 EXE = eulang
 
 STD = -std=c99

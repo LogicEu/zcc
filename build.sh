@@ -6,7 +6,7 @@ inc=-I.
 ldir=-Llib
 
 src=(
-    *.c
+    src/*.c
 )
 
 libs=(
