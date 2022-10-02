@@ -7,6 +7,12 @@ extern "C" {
 
 #include <utopia/utopia.h>
 
+#define chrspace(c) (((c) == ' ') || ((c) == '\n') || ((c) == '\t'))
+#define chrstr(c) (((c) == '\'') || ((c) == '"'))
+#define chrbetween(c, a, b) (((c) >= (a)) && ((c) <= (b)))
+#define chrdigit(c) chrbetween(c, '0', '9')
+#define chralpha(c) (chrbetween(c, 'A', 'Z') || chrbetween(c, 'a', 'z') || ((c) == '_'))
+
 typedef struct range_t {
     size_t start;
     size_t end;

@@ -1,12 +1,6 @@
 #include <preproc.h>
 #include <string.h>
 
-#define chrspace(c) (((c) == ' ') || ((c) == '\n') || ((c) == '\t'))
-#define chrstr(c) (((c) == '\'') || ((c) == '"'))
-#define chrbetween(c, a, b) (((c) >= (a)) && ((c) <= (b)))
-#define chrdigit(c) chrbetween(c, '0', '9')
-#define chralpha(c) (chrbetween(c, 'A', 'Z') || chrbetween(c, 'a', 'z') || ((c) == '_'))
-
 static inline size_t eatblock(const char* str, const char ch, const size_t end, size_t i)
 {
     while (i + 1 < end && str[i + 1] != ch) { 

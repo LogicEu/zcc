@@ -19,6 +19,36 @@ extern range_t tokenrange(const range_t* toks, const size_t count, range_t range
     return range;
 }
 
+static inline void ppc_log_range(const char* str, const range_t range)
+{
+    ppc_log("%s\n", strrange(str, range));
+}
+
+static inline void ppc_log_tokrange(const char* str, const range_t* tokens, const range_t range)
+{
+    for (size_t i = range.start; i < range.end; ++i) {
+        ppc_log("'%s' ", strrange(str, tokens[i]));
+    }
+    ppc_log("\n");
+}
+
+static range_t parenrange(const char* str, const size_t index)
+{
+    char ch = str[index];
+    switch (ch) {
+        case '{': 
+        case '[': ++ch;
+        case '(': ++ch;
+    }
+    
+    size_t i, scope;
+    for (i = index + 1, scope = 1; scope && str[i]; ++i) {
+        scope += (str[i] == str[index]);
+        scope -= (str[i] == ch);
+    }
+    return (range_t){index, i};
+}
+
 static void rangesoffset(const array_t* ranges, const long off, const size_t from)
 {
     range_t* n = ranges->data;
@@ -124,6 +154,8 @@ static size_t ptu_define(ptu_t* ptu, map_t* defines,
     string_t str = !memcmp(&k, &d, sizeof(range_t)) ? string_empty() : string_ranged(ptu->text.data + d.start, ptu->text.data + d.end);
     
     //ppc_log("#define %zu, %zu, %p -> '%s' -> '%s'\n", str.capacity, str.size, str.data, key.data, str.data);
+
+    str.data[0] *= !(ptu->text.data[k.end] == '(' && k.end == d.start);
     
     map_push(defines, &key, &str);
     ptu_remove_line(ptu, line, index);
@@ -168,7 +200,7 @@ void ptu_preprocess(ptu_t* ptu, const array_t* includes)
 
     map_t defines = map_create(sizeof(string_t), sizeof(string_t));
 
-    size_t i, j, n;
+    size_t i, j, n, m;
     for (i = 0; i < ptu->lines.size; ++i) {
         range_t* lines = ptu->lines.data;
 
@@ -214,15 +246,8 @@ void ptu_preprocess(ptu_t* ptu, const array_t* includes)
                 continue;
             }
 
-            ppc_log("'%s' -> '%s'\n", str, val->data);
-
-            array_t ranges = strtoks(val);
-
-            if (val->data[0] == '(') {
-                //for (n = 1; n < ranges.size; ++n) {
-                //    tok = strrange(val->data, r[n]);  
-                //}
-            } else {
+            if (val->data[0]) {
+                array_t ranges = strtoks(val);
                 const range_t t = tokens[j];
                 string_remove_range(&ptu->text, t.start, t.end);
                 array_remove(&ptu->tokens, j);
@@ -236,9 +261,141 @@ void ptu_preprocess(ptu_t* ptu, const array_t* includes)
 
                 string_push_at(&ptu->text, val->data, t.start);
                 array_push_block_at(&ptu->tokens, ranges.data, ranges.size, j);
+                array_free(&ranges);
+                --j;
+                continue;
             }
 
+            val->data[0] = '(';
+
+            array_t ranges = strtoks(val);
+            range_t* r = ranges.data;
+
+            range_t argsparen = parenrange(val->data, 0);
+            range_t argstoks = tokenrange(ranges.data, ranges.size, argsparen);
+            range_t bodytoks = tokenrange(ranges.data, ranges.size, (range_t){argsparen.end, val->size});
+
+            range_t paramsparen = parenrange(ptu->text.data, tokens[j + 1].start);
+            range_t paramstoks = tokenrange(ptu->tokens.data, ptu->tokens.size, paramsparen);
+
+            const size_t argcount = (argstoks.end - argstoks.start - 1) / 2;
+            if (!argcount) {
+                const range_t t = {tokens[j].start, tokens[paramstoks.end - 1].end};
+                string_remove_range(&ptu->text, t.start, t.end);
+                array_remove_block(&ptu->tokens, j, paramstoks.end);
+
+                const long d = (long)ranges.size - (long)bodytoks.start;
+                const long dif = (long)val->size - (long)r[bodytoks.start].start - (long)(t.end - t.start);
+                lines[i].end += dif;
+                linetoks.end += d;
+                rangesoffset(&ptu->lines, dif, i + 1);
+                rangesoffset(&ptu->tokens, dif, j);
+
+                string_push_at(&ptu->text, val->data + r[bodytoks.start].start, t.start);
+                rangesoffset(&ranges, t.start - r[bodytoks.start].start, bodytoks.start);
+                array_push_block_at(&ptu->tokens, r + bodytoks.start, d, j);
+
+                array_free(&ranges);
+                val->data[0] = 0;
+                --j;
+                
+                continue;
+            }
+
+            /*ppc_log("All:\n");
+            ppc_log_tokrange(val->data, ranges.data, (range_t){0, ranges.size});
+            ppc_log("Arguments:\n");
+            ppc_log_tokrange(val->data, ranges.data, argstoks);
+            ppc_log("Body:\n");
+            ppc_log_tokrange(val->data, ranges.data, bodytoks);
+            ppc_log("Parameters:\n");
+            ppc_log_tokrange(ptu->text.data, ptu->tokens.data, paramstoks);*/
+
+            range_t params[0xff], k = {paramstoks.start + 1, 0};
+            for (n = k.start, m = 0; n < paramstoks.end; ++n) {
+                const char c = ptu->text.data[tokens[n].start];
+                if (c == '(' || c == '{') {
+                    range_t p = parenrange(ptu->text.data, tokens[n].start);
+                    p = tokenrange(tokens, linetoks.end, p);
+                    n = p.end - 1;
+                }
+                else if (c == ',' || c == ')') {
+                    k.end = n;
+                    params[m++] = k;
+                    k.start = n + 1;
+                }
+            }
+
+            string_t cpy = string_copy(val);
+            for (n = bodytoks.start; n < bodytoks.end; ++n) {
+                char* ch = cpy.data + r[n].start;
+                if (!chralpha(ch[0])) {
+                    continue;
+                }
+
+                size_t found = 0;
+                const size_t len = r[n].end - r[n].start;
+                for (m = 0; m < argcount; ++m) {
+                    const size_t q = m * 2 + 1;
+                    if ((len == r[q].end - r[q].start) && (!memcmp(ch, cpy.data + r[q].start, len))) {
+                        found = m + 1;
+                        break;
+                    }
+                }
+
+                if (!found--) {
+                    continue;
+                }
+                
+                const range_t l = {tokens[params[found].start].start, tokens[params[found].end - 1].end};
+                const range_t t = r[n];
+                ch = strrange(ptu->text.data, l);
+                
+                string_remove_range(&cpy, t.start, t.end);
+                array_remove(&ranges, n);
+
+                const long dif = (long)(l.end - l.start) - (long)(t.end - t.start);
+                const long d = (long)(params[found].end - params[found].start) - 1;
+                bodytoks.end += d;
+                rangesoffset(&ranges, dif, n);
+                
+                string_push_at(&cpy, ch, t.start);
+                array_push_block_at(&ranges, tokens + params[found].start, d + 1, n);
+
+                r = ranges.data;
+                const long D = (long)t.start - (long)r[n].start;
+                for (m = n; m <= n + d; ++m) {
+                    r[m].start += D;
+                    r[m].end += D;
+                }
+
+                n = m;
+            }
+
+            const long D = -(long)(r[bodytoks.start].start - argsparen.start);
+            string_remove_range(&cpy, argsparen.start, r[bodytoks.start].start);
+            array_remove_block(&ranges, argstoks.start, argstoks.end);
+            rangesoffset(&ranges, D, 0);
+
+            const range_t t = {tokens[j].start, tokens[paramstoks.end - 1].end};
+            string_remove_range(&ptu->text, t.start, t.end);
+            array_remove_block(&ptu->tokens, j, paramstoks.end);
+
+            const long d = (long)ranges.size - (long)(paramstoks.end - j);
+            const long dif = (long)cpy.size - (long)(t.end - t.start);
+            lines[i].end += dif;
+            linetoks.end += d;
+            rangesoffset(&ptu->lines, dif, i + 1);
+            rangesoffset(&ptu->tokens, dif, j);
+
+            string_push_at(&ptu->text, cpy.data, t.start);
+            rangesoffset(&ranges, t.start, 0);
+            array_push_block_at(&ptu->tokens, ranges.data, ranges.size, j);
+
+            string_free(&cpy);
             array_free(&ranges);
+            val->data[0] = 0;
+            --j;
         }
     }
 

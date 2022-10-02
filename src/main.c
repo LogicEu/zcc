@@ -29,7 +29,7 @@ static void ptu_print(const ptu_t* ptu)
             ppc_log("'%s' ", strrange(s, tokens[j]));
         }
         ppc_log("\n");
-        /*ppc_log("'%s'\n", strrange(s, lines[i]));*/
+        //ppc_log("'%s'\n", strrange(s, lines[i]));
     }
 }
 
@@ -62,6 +62,7 @@ int main(const int argc, const char** argv)
         if (ptu.text.size) {
             ptu_preprocess(&ptu, &includes);
             ptu_print(&ptu);
+            //ppc_log("%s\n", ptu.text.data);
             ptu_free(&ptu);
         }
         else ppc_log("Could not open file '%s'.\n", filepaths[i]);
