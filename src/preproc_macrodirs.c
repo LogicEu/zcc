@@ -270,7 +270,6 @@ static long2 ptu_expand_token(ptu_t* ptu, const string_t* str,
 
     size_t i, j;
     range_t params[0xff], p = {paramstoks.start + 1, 0};
-    //ppc_log_tokrange(ptu->text.data, tokens, paramstoks);
     for (i = p.start, j = 0; i < paramstoks.end; ++i) {
         const char c = ptu->text.data[tokens[i].start];
         if (c == '(' || c == '{') {
@@ -285,17 +284,8 @@ static long2 ptu_expand_token(ptu_t* ptu, const string_t* str,
         }
     }
 
-    //ppc_log("%zu\n", j);
-    //for (i = 0; i < j; ++i) {
-    //    ppc_log_tokrange(ptu->text.data, tokens, params[i]);
-    //}
-
-    //return (long2){0, 0};
     string_t cpy = string_copy(str);
-
     for (i = bodytoks.start; i < bodytoks.end; ++i) {
-        //ppc_log("--> ");
-        //ppc_log_range(cpy.data, r[i]);
         char* ch = cpy.data + r[i].start;
         if (!chralpha(ch[0])) {
             continue;
@@ -315,44 +305,13 @@ static long2 ptu_expand_token(ptu_t* ptu, const string_t* str,
             continue;
         }
         
-        //ppc_log("->\n");
         const range_t q = {i, i + 1};
-        //ppc_log("%zu, %zu, %zu\n", q.start, q.end, found);
-        //ppc_log("%zu, %zu\n", params[found].start, params[found].end);
         const range_t f = params[found];
-        //ppc_log("%zu, %zu\n", f.start, f.end);
         const range_t l = {tokens[f.start].start, tokens[f.end - 1].end};
-        //ppc_log("%zu, %zu\n", l.start, l.end);
         const string_t sdummy = string_wrap_sized(strrange(ptu->text.data, l), l.end - l.start);
-        //ppc_log("%s\n", sdummy.data);
-        //ppc_log_tokrange(ptu->text.data, tokens, f);
-        //ppc_log_range(ptu->text.data, l);
-        //ppc_log("[{%s}] %zu, %zu, %zu\n", sdummy.data, i, l.start, l.end);
-        
         const array_t tdummy = array_wrap_sized(tokens + f.start, f.end - f.start, sizeof(range_t));
         const long2 d = ptu_replace(&cpy, &sdummy, &ranges, &tdummy, q, 0);
-        //ppc_log("[[%s]]\n", cpy.data);
         r = ranges.data;
-        
-        /*const range_t t = {r[q.start].start, r[q.end - 1].end};
-        string_remove_range(&cpy, t.start, t.end);
-        array_remove_block(&ranges, q.start, q.end);
-
-        const long2 d = {
-            (long)(tdummy.size) - (long)(q.end - q.start),
-            (long)(sdummy.size) - (long)(t.end - t.start)
-        };
-
-        rangesoffset(&ranges, d.y, q.start);
-        string_push_at(&cpy, sdummy.data, t.start);
-        array_push_block_at(&ranges, tdummy.data, tdummy.size, q.start);
-
-        r = ranges.data;
-        const long dif = (long)t.start - (long)r[q.start].start;
-        for (j = q.start; j < q.start + tdummy.size; ++j) {
-            r[j].start += dif;
-            r[j].end += dif;
-        }*/
 
         bodytoks.end += d.x;
         i += d.x;
@@ -388,11 +347,10 @@ static void ptu_expand(ptu_t* ptu, const map_t* defines,
             continue;
         }
 
-        const long2 d = ptu_expand_token(ptu, val, i);
+        const long2 d = ptu_expand_token(ptu, val, i--);
         linetoks.end += d.x;
         lines[index].end += d.y;
         rangesoffset(&ptu->lines, d.y, index + 1);
-        i -= !(d.x == 0 && d.y == 0);
     }
 }
 
@@ -434,10 +392,7 @@ void ptu_preprocess(ptu_t* ptu, const array_t* includes)
             }
             continue;
         }
-
         ptu_expand(ptu, &defines, linetoks, i);
-
     }
-
     ptu_define_free(&defines);
 }
