@@ -35,7 +35,7 @@ static void ptu_print(const ptu_t* ptu)
 
 int main(const int argc, const char** argv)
 {
-    int status = EXIT_SUCCESS;
+    int status = EXIT_SUCCESS, ppprint = 0;
     array_t infiles = array_create(sizeof(char*));
     array_t includes = stdincludes();
 
@@ -44,6 +44,9 @@ int main(const int argc, const char** argv)
             if (argv[i][1] == 'I') {
                 const char* ptr = argv[i] + 2;
                 array_push(&includes, &ptr);
+            }
+            if (argv[i][1] == 'E') {
+                ++ppprint;
             }
         } 
         else array_push(&infiles, &argv[i]);
@@ -61,8 +64,10 @@ int main(const int argc, const char** argv)
         ptu_t ptu = ptu_read(filepaths[i]);
         if (ptu.text.size) {
             ptu_preprocess(&ptu, &includes);
-            ptu_print(&ptu);
-            //ppc_log("%s\n", ptu.text.data);
+            if (ppprint) {
+                ptu_print(&ptu);
+                ppc_log("%s\n", ptu.text.data);
+            }
             ptu_free(&ptu);
         }
         else ppc_log("Could not open file '%s'.\n", filepaths[i]);
