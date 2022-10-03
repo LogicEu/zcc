@@ -169,9 +169,13 @@ static size_t ptu_define(ptu_t* ptu, map_t* defines,
     const range_t d = {toks[args].start, toks[line.end - 1].end};
 
     string_t key = string_ranged(ptu->text.data + k.start, ptu->text.data + k.end);
-    string_t str = !memcmp(&k, &d, sizeof(range_t)) ? string_empty() : string_ranged(ptu->text.data + d.start, ptu->text.data + d.end);
-
-    str.data[0] *= !(ptu->text.data[k.end] == '(' && k.end == d.start);
+    string_t str;
+    
+    if (memcmp(&k, &d, sizeof(range_t))) {
+        str = string_ranged(ptu->text.data + d.start, ptu->text.data + d.end);
+        str.data[0] *= !(ptu->text.data[k.end] == '(' && k.end == d.start);
+    } 
+    else str = string_empty();
     
     map_push(defines, &key, &str);
     ptu_remove_line(ptu, line, index);
@@ -365,10 +369,11 @@ void ptu_preprocess(ptu_t* ptu, const array_t* includes)
     size_t i, j;
     for (i = 0; i < ptu->lines.size; ++i) {
         range_t* lines = ptu->lines.data;
+        //ppc_log_range(ptu->text.data, lines[i]);
         if (lines[i].start == lines[i].end) {
             continue;
         }
-
+    
         range_t* tokens = ptu->tokens.data;
         range_t linetoks = tokenrange(tokens, ptu->tokens.size, lines[i]);
         if (linetoks.start == linetoks.end) {
@@ -392,7 +397,9 @@ void ptu_preprocess(ptu_t* ptu, const array_t* includes)
             }
             continue;
         }
+
         ptu_expand(ptu, &defines, linetoks, i);
+
     }
     ptu_define_free(&defines);
 }

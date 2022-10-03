@@ -9,6 +9,8 @@ extern range_t tokenrange(const range_t* toks, const size_t count, range_t range
 static array_t stdincludes(void)
 {
     static const char* stddirs[] = {"/usr/include/", "/usr/local/include/",
+        ("/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/"
+        "/usr/lib/clang/13.1.6/include"),
         ("/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/"
         "Developer/SDKs/MacOSX.sdk/usr/include")
     };
