@@ -4,7 +4,7 @@ SRC = src/*.c
 EXE = eulang
 
 STD = -std=c99
-OPT = 
+OPT = -O2 
 WFLAGS = -Wall -Wextra
 INC = -I.
 

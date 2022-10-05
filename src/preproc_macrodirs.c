@@ -447,13 +447,30 @@ static size_t ptu_ifdef(ptu_t* ptu, const map_t* defines,
     return 1;
 }
 
+static map_t stddefines(void)
+{
+    map_t defines = map_create(sizeof(string_t), sizeof(string_t));
+    string_t key, value;
+    
+    key = string_create("__STDC_VERSION__");
+    value = string_create("201710");
+    map_push(&defines, &key, &value);
+
+    key = string_create("__has_feature");
+    value = string_create("(x) 0");
+    value.data[0] = 0;
+    map_push(&defines, &key, &value);
+
+    return defines;
+}
+
 void ptu_preprocess(ptu_t* ptu, const array_t* includes)
 {
     static const char* inc = "include", *def = "define", *ifdef = "if", *undef = "undef";
     const size_t inclen = strlen(inc), deflen = strlen(def);
     const size_t ifdeflen = strlen(ifdef), undeflen = strlen(undef);
 
-    map_t defines = map_create(sizeof(string_t), sizeof(string_t));
+    map_t defines = stddefines();
 
     size_t i, j;
     for (i = 0; i < ptu->lines.size; ++i) {
