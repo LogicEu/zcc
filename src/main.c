@@ -3,9 +3,6 @@
 #define EXIT_SUCCESS 0
 #define EXIT_FAILURE 1
 
-extern char* strrange(const char* str, const range_t range);
-extern range_t tokenrange(const range_t* toks, const size_t count, range_t range);
-
 static array_t stdincludes(void)
 {
     static const char* stddirs[] = {"/usr/include/", "/usr/local/include/",
@@ -67,7 +64,7 @@ int main(const int argc, const char** argv)
         if (ptu.text.size) {
             ptu_preprocess(&ptu, &includes);
             if (ppprint) {
-                ptu_print(&ptu);
+                //ptu_print(&ptu);
                 ppc_log("%s\n", ptu.text.data);
             }
             ptu_free(&ptu);

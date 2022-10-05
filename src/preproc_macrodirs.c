@@ -8,52 +8,9 @@ typedef struct long2 {
     long x, y;
 } long2;
 
-extern char* strrange(const char* str, const range_t range)
+static inline long2 long2_add(const long2 dst, const long2 src)
 {
-    static char buffer[0xfff];
-    const size_t len = range.end - range.start;
-    memcpy(buffer, str + range.start, len);
-    buffer[len] = 0;
-    return buffer;
-}
-
-extern range_t tokenrange(const range_t* toks, const size_t count, range_t range)
-{
-    size_t i;
-    for (i = 0; i < count && toks[i].start < range.start; ++i);
-    for (range.start = i; i < count && toks[i].end <= range.end; ++i);
-    range.end = i;
-    return range;
-}
-
-static inline void ppc_log_range(const char* str, const range_t range)
-{
-    ppc_log("%s\n", strrange(str, range));
-}
-
-static inline void ppc_log_tokrange(const char* str, const range_t* tokens, const range_t range)
-{
-    for (size_t i = range.start; i < range.end; ++i) {
-        ppc_log("'%s' ", strrange(str, tokens[i]));
-    }
-    ppc_log("\n");
-}
-
-static range_t parenrange(const char* str, const size_t index)
-{
-    char ch = str[index];
-    switch (ch) {
-        case '{': 
-        case '[': ++ch;
-        case '(': ++ch;
-    }
-    
-    size_t i, scope;
-    for (i = index + 1, scope = 1; scope && str[i]; ++i) {
-        scope += (str[i] == str[index]);
-        scope -= (str[i] == ch);
-    }
-    return (range_t){index, i};
+    return (long2){dst.x + src.x, dst.y + src.y};
 }
 
 static void rangesoffset(const array_t* ranges, const long off, const size_t from)
@@ -116,8 +73,10 @@ static void ptu_merge(ptu_t* dest, ptu_t* src, const range_t toks, const size_t 
 static size_t ptu_include(ptu_t* ptu, const array_t* includes,
                         const range_t line, const size_t index)
 {    
+    static char dir[0xfff] = "./";
+
     ptu_t p;
-    char filename[0xfff];
+    char filename[0xfff], buf[0xfff];
     const char* s = ptu->text.data; 
     const range_t* toks = ptu->tokens.data;
     const size_t incopt = toks[line.start + 2].start;
@@ -130,21 +89,26 @@ static size_t ptu_include(ptu_t* ptu, const array_t* includes,
     memcpy(filename, s + r.start, len);
     filename[len] = 0;
     
+    size_t dirlen;
     if (s[incopt] == '"') {
-        p = ptu_read(filename);
+        dirlen = strlen(dir);
+        memcpy(buf, dir, dirlen);
+        memcpy(buf + dirlen, filename, len + 1);
+        p = ptu_read(buf);
     }
     else if (s[incopt] == '<') {
-        char dir[0xfff];
         const size_t count = includes->size;
         const char** idirs = includes->data;;
-        for (size_t i = 0, dirlen; i < count; ++i) {
+        for (size_t i = 0; i < count; ++i) {
             dirlen = strlen(idirs[i]);
             memcpy(dir, idirs[i], dirlen);
             if (dir[dirlen - 1] != '/') {
                 dir[dirlen++] = '/';
             }
-            memcpy(dir + dirlen, filename, len + 1);
-            p = ptu_read(dir);
+            
+            memcpy(buf, dir, dirlen);
+            memcpy(buf + dirlen, filename, len + 1);
+            p = ptu_read(buf);
             if (p.text.size) {
                 break;
             }
@@ -155,7 +119,7 @@ static size_t ptu_include(ptu_t* ptu, const array_t* includes,
         ppc_log("Could not open header file '%s'.\n", filename);
         return 0;
     }
-    
+
     ptu_merge(ptu, &p, line, index);
     return 1;
 }
@@ -197,16 +161,6 @@ static size_t ptu_undef(ptu_t* ptu, map_t* defines,
         string_free(&d);
     }
 
-    ptu_remove_line(ptu, line, index);
-    return 1;
-}
-
-static size_t ptu_ifdef(ptu_t* ptu, const map_t* defines, 
-                        const range_t line, const size_t index)
-{
-    (void)ptu;
-    (void)defines;
-    (void)line;
     ptu_remove_line(ptu, line, index);
     return 1;
 }
@@ -334,10 +288,11 @@ static long2 ptu_expand_token(ptu_t* ptu, const string_t* str,
     return d;
 }
 
-static void ptu_expand(ptu_t* ptu, const map_t* defines,
+static long2 ptu_expand(ptu_t* ptu, const map_t* defines,
                         range_t linetoks, const size_t index)
 {
     size_t i, n;
+    long2 ret = {0, 0}, d;
     range_t* lines = ptu->lines.data, *tokens;
     for (i = linetoks.start; i < linetoks.end; ++i) {
         tokens = ptu->tokens.data;
@@ -351,11 +306,145 @@ static void ptu_expand(ptu_t* ptu, const map_t* defines,
             continue;
         }
 
-        const long2 d = ptu_expand_token(ptu, val, i--);
+        d = ptu_expand_token(ptu, val, i--);
+        ret = long2_add(ret, d);
         linetoks.end += d.x;
         lines[index].end += d.y;
         rangesoffset(&ptu->lines, d.y, index + 1);
     }
+    return ret;
+}
+
+static long2 ptu_reduce(ptu_t* ptu, const map_t* defines, 
+                        range_t linetoks, const size_t index)
+{
+    static const char* def = "defined";
+    
+    char buf[0xff];
+    array_t a;
+    string_t s;
+    range_t r, rbuf;
+    long2 ret = {0, 0}, d;
+
+    range_t *tokens = ptu->tokens.data, *lines = ptu->lines.data;
+    char* str = strrange(ptu->text.data, tokens[linetoks.start + 1]);
+    if (!strcmp(str, "ifdef") || !strcmp(str, "ifndef")) {
+        strcpy(buf, "if ");
+        if (ptu->text.data[tokens[linetoks.start + 1].start + 2] == 'n') {
+            strcat(buf, "! ");
+        }
+        strcat(buf, def);
+        s = string_wrap(buf);
+        a = strtoks(&s);
+        rangesoffset(&a, (long)tokens[linetoks.start + 1].start, 0);
+        r = (range_t){linetoks.start + 1, linetoks.start + 2};
+        d = ptu_replace(&ptu->text, &s, &ptu->tokens, &a, r, 0);
+        ret = long2_add(ret, d);
+        linetoks.end += d.x;
+        lines[index].end += d.y;
+        rangesoffset(&ptu->lines, d.y, index + 1);
+        array_free(&a);
+    }
+
+    rbuf = (range_t){0, 1};
+    a = array_wrap_sized(&rbuf, 1, sizeof(range_t));
+
+    size_t i, n;
+    for (i = linetoks.start + 2; i < linetoks.end; ++i) {
+        tokens = ptu->tokens.data, lines = ptu->lines.data;
+        str = strrange(ptu->text.data, tokens[i]);
+        if (!strcmp(str, def)) {
+            s = string_wrap_sized(buf, 1);
+            int k = (ptu->text.data[tokens[i + 1].start] == '(');
+            str = strrange(ptu->text.data, tokens[i + 1 + k]);
+            s.data[0] = !!map_search(defines, &str) + '0';
+            s.data[1] = 0;
+            r = (range_t){i, i + (1 + k) * 2};
+            d = ptu_replace(&ptu->text, &s, &ptu->tokens, &a, r, 0);
+        }
+        else if ((n = map_search(defines, &str))) {
+            s = *(string_t*)map_value_at(defines, n - 1);
+            if (!s.data) {
+                continue;
+            }
+            d = ptu_expand_token(ptu, &s, i--);
+        }
+        else continue;
+
+        ret = long2_add(ret, d);
+        linetoks.end += d.x;
+        lines[index].end += d.y;
+        rangesoffset(&ptu->lines, d.y, index + 1);
+    }
+    return ret;
+}
+
+static size_t ptu_ifdef(ptu_t* ptu, const map_t* defines, 
+                        range_t linetoks, const size_t index)
+{
+    static const char* ifstr = "if";
+
+    long2 d = ptu_reduce(ptu, defines, linetoks, index);
+    linetoks.end += d.x;
+
+    range_t* lines = ptu->lines.data, *tokens = ptu->tokens.data;
+    //ppc_log_tokrange(ptu->text.data, tokens, linetoks);
+    bnode_t* ast = tree_parse(ptu->text.data, tokens + linetoks.start + 2, linetoks.end - (linetoks.start + 2));
+    long l = tree_eval(ast, ptu->text.data);
+    bnode_free(ast);
+    int f = !!l;
+    int b = f;
+
+    ptu_remove_line(ptu, linetoks, index);
+
+    for (size_t i = index, scope = 0; i < ptu->lines.size; ++i) {
+        lines = ptu->lines.data, tokens = ptu->tokens.data;
+        linetoks = tokenrange(tokens, ptu->tokens.size, lines[i]);
+        //ppc_log("%zu ", f);
+        //ppc_log_range(ptu->text.data, lines[i]);
+        if (linetoks.start != linetoks.end && ptu->text.data[tokens[linetoks.start].start] == '#') {
+            char* str = strrange(ptu->text.data, tokens[linetoks.start + 1]);
+            if (!strcmp(str, "else") && !scope) {
+                if (!b) {
+                    b = f = 1;
+                    ptu_remove_line(ptu, linetoks, i--);
+                    continue;
+                }
+                f = 0;
+            }
+            else if (!strcmp(str, "elif") && !scope) {
+                if (!b) {
+                    d = ptu_reduce(ptu, defines, linetoks, i);
+                    linetoks.end += d.x;
+                    tokens = ptu->tokens.data;
+                    ast = tree_parse(ptu->text.data, tokens + linetoks.start + 2, linetoks.end - (linetoks.start + 2));
+                    l = tree_eval(ast, ptu->text.data);
+                    bnode_free(ast);
+                    f = !!l;
+                    b = f;
+                    ptu_remove_line(ptu, linetoks, i--);
+                    continue;
+                }
+                f = 0;
+            }
+            else if (!strcmp(str, "endif")) {
+                if (!scope) {
+                    ptu_remove_line(ptu, linetoks, i--);
+                    break;
+                }
+                else --scope;
+            }
+            else if (!memcmp(str, ifstr, 2)) {
+                ++scope;
+            }
+        }
+        
+        if (!f) {
+            ptu_remove_line(ptu, linetoks, i--);
+        }
+    }
+
+    return 1;
 }
 
 void ptu_preprocess(ptu_t* ptu, const array_t* includes)

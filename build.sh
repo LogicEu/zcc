@@ -37,6 +37,7 @@ comp() {
     
 clean() {
     [ -d lib ] && rm -r lib && echo "Deleted 'lib'."
+    [ -d $exe.dSYM ] && rm -r $exe.dSYM && echo "Deleted '$exe.dSYM'."
     [ -f $exe ] && rm $exe && echo "Deleted '$exe'."
     return 0
 }

@@ -4,7 +4,7 @@ SRC = src/*.c
 EXE = eulang
 
 STD = -std=c99
-OPT = -O2
+OPT = 
 WFLAGS = -Wall -Wextra
 INC = -I.
 
@@ -16,12 +16,7 @@ LPATHS = $(patsubst %,$(LDIR)/%,$(LSTATIC))
 LFLAGS = $(patsubst %,-L%,$(LDIR))
 LFLAGS += $(patsubst %,-l%,$(LIB))
 
-OS = $(shell uname -s)
-ifeq ($(OS),Darwin)
-    OSFLAGS = -mmacos-version-min=10.10
-endif
-
-CFLAGS = $(STD) $(OPT) $(WFLAGS) $(INC) $(OSFLAGS)
+CFLAGS = $(STD) $(OPT) $(WFLAGS) $(INC)
 
 $(EXE): $(LPATHS) $(SRC) $(MAIN)
 	$(CC) -o $@ $(SRC) $(MAIN) $(CFLAGS) $(LFLAGS)
