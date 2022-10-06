@@ -19,26 +19,27 @@ static array_t stdincludes(void)
 
 static void ptu_print(const ptu_t* ptu)
 {
+    size_t i, j;
     const char* s = ptu->text.data;
     const size_t linecount = ptu->lines.size, tokencount = ptu->tokens.size;
     const range_t* lines = ptu->lines.data, *tokens = ptu->tokens.data;
-    for (size_t i = 0; i < linecount; ++i) {
+    for (i = 0; i < linecount; ++i) {
         const range_t toks = tokenrange(tokens, tokencount, lines[i]);
-        for (size_t j = toks.start; j < toks.end; ++j) {
+        for (j = toks.start; j < toks.end; ++j) {
             ppc_log("'%s' ", strrange(s, tokens[j]));
         }
         ppc_log("\n");
-        //ppc_log("'%s'\n", strrange(s, lines[i]));
+        /* ppc_log("'%s'\n", strrange(s, lines[i])); */
     }
 }
 
 int main(const int argc, const char** argv)
 {
-    int status = EXIT_SUCCESS, ppprint = 0;
+    int status = EXIT_SUCCESS, ppprint = 0, i;
     array_t infiles = array_create(sizeof(char*));
     array_t includes = stdincludes();
 
-    for (int i = 1; i < argc; ++i) {
+    for (i = 1; i < argc; ++i) {
         if (argv[i][0] == '-') {
             if (argv[i][1] == 'I') {
                 const char* ptr = argv[i] + 2;
@@ -58,13 +59,13 @@ int main(const int argc, const char** argv)
     }
 
     char** filepaths = infiles.data;
-    const size_t filecount = infiles.size;
-    for (size_t i = 0; i < filecount; ++i) {
+    const int filecount = (int)infiles.size;
+    for (i = 0; i < filecount; ++i) {
         ptu_t ptu = ptu_read(filepaths[i]);
         if (ptu.text.size) {
             ptu_preprocess(&ptu, &includes);
             if (ppprint) {
-                //ptu_print(&ptu);
+                /*ptu_print(&ptu);*/
                 ppc_log("%s\n", ptu.text.data);
             }
             ptu_free(&ptu);

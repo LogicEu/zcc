@@ -14,7 +14,7 @@ libs=(
 )
 
 flags=(
-    -std=c99
+    -std=c89
     -Wall 
     -Wextra
     -O2

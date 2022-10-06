@@ -26,6 +26,24 @@ typedef struct ptu_t {
     array_t tokens;
 } ptu_t;
 
+#define atol(a) zatol(a)
+#define memcpy(a, b, n) zmemcpy(a, b, n)
+#define memcmp(a, b, n) zmemcmp(a, b, n)
+#define strcpy(a, b) zstrcpy(a, b)
+#define strcat(a, b) zstrcat(a, b)
+#define strcmp(a, b) zstrcmp(a, b)
+#define strstr(a, b) zstrstr(a, b)
+#define strlen(a) zstrlen(a)
+
+void* zmemcpy(void* dst, const void* src, size_t n);
+int zmemcmp(const void* p1, const void* p2, size_t n);
+char* zstrcpy(char* dst, const char* src);
+char* zstrcat(char* dst, const char* src);
+int zstrcmp(const char* s1, const char* s2);
+size_t zstrlen(const char* str);
+char* zstrstr(const char* big, const char* small);
+long zatol(const char* str);
+
 char* strrange(const char* str, const range_t range);
 range_t tokenrange(const range_t* toks, const size_t count, range_t range);
 range_t parenrange(const char* str, const size_t index);
@@ -41,6 +59,7 @@ void ptu_preprocess(ptu_t* ptu, const array_t* includes);
 bnode_t* tree_parse(const char* str, range_t* args, const size_t argcount);
 long tree_eval(const bnode_t* root, const char* str);
 
+string_t ppc_read(const char* filename);
 void ppc_log(const char* fmt, ...);
 void ppc_log_range(const char* str, const range_t range);
 void ppc_log_tokrange(const char* str, const range_t* tokens, const range_t range);

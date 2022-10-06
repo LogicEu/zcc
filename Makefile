@@ -3,7 +3,7 @@
 SRC = src/*.c
 EXE = eulang
 
-STD = -std=c99
+STD = -std=c89
 OPT = -O2 
 WFLAGS = -Wall -Wextra
 INC = -I.

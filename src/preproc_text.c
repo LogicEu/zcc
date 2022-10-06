@@ -1,7 +1,6 @@
 #include <preproc.h>
-#include <string.h>
 
-static inline size_t eatblock(const char* str, const char ch, const size_t end, size_t i)
+static size_t eatblock(const char* str, const char ch, const size_t end, size_t i)
 {
     while (i + 1 < end && str[i + 1] != ch) { 
         i += (str[i + 1] == '\\') + 1;
@@ -9,7 +8,7 @@ static inline size_t eatblock(const char* str, const char ch, const size_t end, 
     return i + 1;
 }
 
-static inline size_t eatsymbol(const char* str, const size_t i)
+static size_t eatsymbol(const char* str, const size_t i)
 {
     size_t j = 1;
     switch(str[i]) {
@@ -68,10 +67,11 @@ array_t strlines(string_t* str)
 
 array_t strtoks(const string_t* str)
 {
+    size_t i;
     range_t r = {0, 0};
     const char* s = str->data;
     array_t tokens = array_create(sizeof(range_t));
-    for (size_t i = 0; s[i]; ++i) {
+    for (i = 0; s[i]; ++i) {
         r.start = i;   
         if (chrstr(s[i])) {
             i = eatblock(s, s[i], str->size, i) + 1;

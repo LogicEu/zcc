@@ -1,5 +1,4 @@
 #include <preproc.h>
-#include <stdlib.h>
 
 static int oppres(const char* op)
 {
@@ -24,7 +23,7 @@ static int oppres(const char* op)
 static bnode_t* tree_parse_expression(const char* str, range_t* args, size_t argcount, size_t* iter, const int p)
 {
     char c = str[args[*iter].start];
-    //ppc_log_range(str, args[*iter]);
+    /*ppc_log_range(str, args[*iter]);*/
     const size_t bytes = sizeof(range_t);
     range_t *token = args + *iter;
     bnode_t* root;
@@ -44,8 +43,8 @@ static bnode_t* tree_parse_expression(const char* str, range_t* args, size_t arg
         bnode_t* node = bnode_create(token, bytes);
         c = str[token->start];
         
-        //ppc_log("...");
-        //ppc_log_range(str, *token);
+        /*ppc_log("...");
+        ppc_log_range(str, *token);*/
         
         if (chralpha(c) || chrdigit(c) || c == '.') {
             bnode_connect(subroot, node);
@@ -124,6 +123,7 @@ long tree_eval(const bnode_t* root, const char* str)
 
     if (chralpha(*c)) {
         ppc_log("Preprocesor macro identifier '%s' is not defined.\n", strrange(str, r));
+        ppc_log_range(str, (range_t){r.start - 32, r.start + 32});
         return 0;
     }
 
@@ -133,7 +133,7 @@ long tree_eval(const bnode_t* root, const char* str)
     }
 
     const long left = tree_eval(root->left, str);
-    //ppc_log("L-%ld\n", left);
+    /*ppc_log("L-%ld\n", left);*/
     
     if (!root->right) {
         return tree_eval_unary(strrange(str, r), left);
@@ -147,7 +147,7 @@ long tree_eval(const bnode_t* root, const char* str)
     }
 
     const long right = tree_eval(root->right, str);
-    //ppc_log("R-%ld\n", right);
+    /*ppc_log("R-%ld\n", right);*/
 
     return tree_eval_binary(c, left, right);
 }

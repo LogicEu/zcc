@@ -1,5 +1,4 @@
 #include <preproc.h>
-#include <string.h>
 
 char* strrange(const char* str, const range_t range)
 {
