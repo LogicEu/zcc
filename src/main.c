@@ -1,9 +1,11 @@
-#include <preproc.h>
+#include <zio.h>
+#include <zcc.h>
+#include <utopia/utopia.h>
 
-#define EXIT_SUCCESS 0
-#define EXIT_FAILURE 1
+#define ZCC_EXIT_SUCCESS 0
+#define ZCC_EXIT_FAILURE 1
 
-static array_t stdincludes(void)
+static array_t zcc_std_includes(void)
 {
     static const char* stddirs[] = {"/usr/include/", "/usr/local/include/",
         ("/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/"
@@ -17,27 +19,11 @@ static array_t stdincludes(void)
     return includes;
 }
 
-static void ptu_print(const ptu_t* ptu)
-{
-    size_t i, j;
-    const char* s = ptu->text.data;
-    const size_t linecount = ptu->lines.size, tokencount = ptu->tokens.size;
-    const range_t* lines = ptu->lines.data, *tokens = ptu->tokens.data;
-    for (i = 0; i < linecount; ++i) {
-        const range_t toks = tokenrange(tokens, tokencount, lines[i]);
-        for (j = toks.start; j < toks.end; ++j) {
-            ppc_log("'%s' ", strrange(s, tokens[j]));
-        }
-        ppc_log("\n");
-        /* ppc_log("'%s'\n", strrange(s, lines[i])); */
-    }
-}
-
 int main(const int argc, const char** argv)
 {
-    int status = EXIT_SUCCESS, ppprint = 0, i;
+    int status = ZCC_EXIT_SUCCESS, ppprint = 0, i;
     array_t infiles = array_create(sizeof(char*));
-    array_t includes = stdincludes();
+    array_t includes = zcc_std_includes();
 
     for (i = 1; i < argc; ++i) {
         if (argv[i][0] == '-') {
@@ -53,28 +39,33 @@ int main(const int argc, const char** argv)
     }
 
     if (!infiles.size) {
-        ppc_log("Missing input file.\n");
-        status = EXIT_FAILURE;
+        zcc_log("Missing input file.\n");
+        status = ZCC_EXIT_FAILURE;
         goto exit;
     }
 
+    char* null = NULL;
+    array_push(&includes, &null);
+
+    size_t len;
     char** filepaths = infiles.data;
     const int filecount = (int)infiles.size;
     for (i = 0; i < filecount; ++i) {
-        ptu_t ptu = ptu_read(filepaths[i]);
-        if (ptu.text.size) {
-            ptu_preprocess(&ptu, &includes);
+        char* src = zcc_fread(filepaths[i], &len);
+        if (src) {
+            src = zcc_preprocess_text(src, &len);
+            src = zcc_preprocess_macros(src, &len, includes.data);
             if (ppprint) {
-                /*ptu_print(&ptu);*/
-                ppc_log("%s\n", ptu.text.data);
+                zcc_log("%s\n", src);
             }
-            ptu_free(&ptu);
+            zcc_compile(src);
+            zfree(src);
         }
-        else ppc_log("Could not open file '%s'.\n", filepaths[i]);
+        else zcc_log("zcc could not open translation unit '%s'.\n", filepaths[i]);
     }
 
 exit:
     array_free(&infiles);
     array_free(&includes);
-    return status ;
+    return status;
 }

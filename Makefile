@@ -1,12 +1,13 @@
-# eulang makefile
+# zcc makefile
 
+CC = gcc
 SRC = src/*.c
-EXE = eulang
+EXE = zcc
 
 STD = -std=c89
 OPT = -O2 
 WFLAGS = -Wall -Wextra
-INC = -I.
+INC = -I. -Isrc
 
 LDIR = lib
 LIB = utopia

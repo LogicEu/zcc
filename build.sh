@@ -1,12 +1,16 @@
 #!/bin/bash
 
-exe=eulang
+exe=zcc
 cc=gcc
-inc=-I.
 ldir=-Llib
 
 src=(
     src/*.c
+)
+
+inc=(
+    -I.
+    -Isrc
 )
 
 libs=(
@@ -31,8 +35,8 @@ build() {
 
 comp() {
     [ ! -d lib ] && echo "Use 'build' before 'comp'." && exit
-    echo "$cc ${flags[*]} $inc $ldir ${libs[*]} ${src[*]} -o $exe"
-    $cc ${flags[*]} $inc $ldir ${libs[*]} ${src[*]} -o $exe
+    echo "$cc ${flags[*]} ${inc[*]} $ldir ${libs[*]} ${src[*]} -o $exe"
+    $cc ${flags[*]} ${inc[*]} $ldir ${libs[*]} ${src[*]} -o $exe
 }
     
 clean() {

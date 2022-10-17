@@ -1,3 +1,3 @@
-# eulang
+# zcc
 >
-> Simple experimental programming language.
+> Simple experimental C compiler.
