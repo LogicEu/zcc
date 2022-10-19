@@ -2,7 +2,10 @@
 
 CC = gcc
 SRC = src/*.c
+MAIN = main.c
+TEST = test.c
 EXE = zcc
+TEXE = ztest
 
 STD = -std=c89
 OPT = -O2 
@@ -33,6 +36,9 @@ $(LDIR)%.a: %
 
 exe: $(SRC) $(MAIN)
 	$(CC) -o $(EXE) $^ $(CFLAGS) $(LFLAGS)
+
+test: $(SRC) $(TEST)
+	$(CC) -o $(TEXE) $^ $(CFLAGS) $(LFLAGS)
 
 clean: build.sh
 	./$^ $@

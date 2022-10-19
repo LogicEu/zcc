@@ -2,6 +2,7 @@
 
 extern void* malloc(size_t size);
 extern void free(void* data);
+extern void exit(int status);
 
 void* zmalloc(size_t size)
 {
@@ -11,6 +12,33 @@ void* zmalloc(size_t size)
 void zfree(void* ptr)
 {
     return free(ptr);
+}
+
+void zexit(int status)
+{
+    return exit(status);
+}
+
+int zatoi(const char* str)
+{
+    int i, j, n;
+    for (i = 0; str[i] >= '0' && str[i] <= '9'; ++i);
+    for (n = 0, j = 1, --i; i >= 0; --i) {
+        n += (str[i] - '0') * j;
+        j *= 10;
+    }
+    return n;
+}
+
+long zatol(const char* str)
+{
+    long i, j, n;
+    for (i = 0; str[i] >= '0' && str[i] <= '9'; ++i);
+    for (n = 0, j = 1, --i; i >= 0; --i) {
+        n += (str[i] - '0') * j;
+        j *= 10;
+    }
+    return n;
 }
 
 void* zmemcpy(void* dst, const void* src, size_t n)
@@ -67,17 +95,6 @@ int zstrcmp(const char* s1, const char* s2)
         ++a, ++b;
     }
     return *a - *b;
-}
-
-long zatol(const char* str)
-{
-    long i, j, n;
-    for (i = 0; str[i] >= '0' && str[i] <= '9'; ++i);
-    for (n = 0, j = 1, --i; i >= 0; --i) {
-        n += (str[i] - '0') * j;
-        j *= 10;
-    }
-    return n;
 }
 
 size_t zstrlen(const char* str)

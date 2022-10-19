@@ -2,9 +2,6 @@
 #include <zcc.h>
 #include <utopia/utopia.h>
 
-#define ZCC_EXIT_SUCCESS 0
-#define ZCC_EXIT_FAILURE 1
-
 static array_t zcc_std_includes(void)
 {
     static const char* stddirs[] = {"/usr/include/", "/usr/local/include/",
@@ -58,7 +55,7 @@ int main(const int argc, const char** argv)
             if (ppprint) {
                 zcc_log("%s\n", src);
             }
-            zcc_compile(src);
+            zcc_parse(src);
             zfree(src);
         }
         else zcc_log("zcc could not open translation unit '%s'.\n", filepaths[i]);

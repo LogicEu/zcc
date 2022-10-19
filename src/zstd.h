@@ -3,10 +3,20 @@
 
 #include <zstddef.h>
 
+#ifndef ZCC_EXIT_FAILURE
+    #define ZCC_EXIT_FAILURE 1
+#endif
+
+#ifndef ZCC_EXIT_SUCCESS
+    #define ZCC_EXIT_SUCCESS 0
+#endif
+
 /* stdlib */
+void zexit(int status);
 void* zmalloc(size_t size);
 void zfree(void* ptr);
 long zatol(const char* str);
+int zatoi(const char* str);
 
 /*  string */
 void* zmemcpy(void* dst, const void* src, size_t n);

@@ -1,6 +1,7 @@
 #!/bin/bash
 
 exe=zcc
+texe=ztest
 cc=gcc
 ldir=-Llib
 
@@ -35,14 +36,15 @@ build() {
 
 comp() {
     [ ! -d lib ] && echo "Use 'build' before 'comp'." && exit
-    echo "$cc ${flags[*]} ${inc[*]} $ldir ${libs[*]} ${src[*]} -o $exe"
-    $cc ${flags[*]} ${inc[*]} $ldir ${libs[*]} ${src[*]} -o $exe
+    echo "$cc ${flags[*]} ${inc[*]} $ldir ${libs[*]} ${src[*]} $1 -o $exe"
+    $cc ${flags[*]} ${inc[*]} $ldir ${libs[*]} ${src[*]} $1 -o $exe
 }
     
 clean() {
     [ -d lib ] && rm -r lib && echo "Deleted 'lib'."
     [ -d $exe.dSYM ] && rm -r $exe.dSYM && echo "Deleted '$exe.dSYM'."
     [ -f $exe ] && rm $exe && echo "Deleted '$exe'."
+    [ -f $texe ] && rm $texe && echo "Deleted '$texe'."
     return 0
 }
 
@@ -50,7 +52,9 @@ case "$1" in
     "build")
         build;;
     "comp")
-        comp;;
+        comp "main.c";;
+    "test")
+        comp "test.c";;
     "all")
         build && comp;;
     "clean")

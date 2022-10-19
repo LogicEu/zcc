@@ -7,8 +7,8 @@ extern "C" {
 
 #include <zstd.h>
 #include <zlexer.h>
+#include <zparser.h>
 #include <zpreprocessor.h>
-#include <zcompiler.h>
 
 #ifdef __cplusplus
 }

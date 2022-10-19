@@ -1,19 +1,27 @@
 #include <zlexer.h>
+#include <zassert.h>
 
-#define chrspace(c) (((c) == ' ') || ((c) == '\n') || ((c) == '\t') || ((c) == '\r'))
-#define chrstr(c) (((c) == '\'') || ((c) == '"'))
-#define chrparen(c) (((c) == '(') || ((c) == '[') || ((c) == '{')) 
-#define chrbetween(c, a, b) (((c) >= (a)) && ((c) <= (b)))
-#define chrdigit(c) chrbetween(c, '0', '9')
-#define chralpha(c) (chrbetween(c, 'A', 'Z') || chrbetween(c, 'a', 'z') || ((c) == '_'))
-
-char* zcc_lex(const char* str, size_t* len)
+static char* zcc_lexnull(const char* str)
 {
-    *len = 0;
-    
-    if (!str) {
+    (void)str;
+    return NULL;
+}
+
+char* zcc_lexline(const char* str)
+{
+    zassert(str);
+
+    if (!*str) {
         return NULL;
     }
+    
+    char* end = zstrchr(str, '\n');
+    return !end ? (char*)(size_t)str + zstrlen(str) : end;
+}
+
+char* zcc_lexspace(const char* str)
+{
+    zassert(str);
 
     while (*str && (*str == ' ' || *str == '\t')) {
         ++str;
@@ -23,42 +31,78 @@ char* zcc_lex(const char* str, size_t* len)
         return NULL;
     }
 
-    const char c = *str;
-    size_t i = 0;
+    return (char*)(size_t)str;
+}
 
-    if (chrstr(c)) {
-        ++i;
-        while (str[i] && str[i] != c) {
-            i += (str[i] == '\\') + 1;
-        }
-        ++i;
+char* zcc_lexstr(const char* str)
+{
+    zassert(chrstr(*str));
+    
+    const char c = *str++;
+    while (*str && *str != c) {
+        str += (*str == '\\') + 1;
     }
-    else if (chrdigit(c) || (c == '.' && chrdigit(str[1]))) {
-        while (str[i] && (chrdigit(str[i]) || chralpha(str[i]) || str[i] == '.')) {
-            ++i;
+    return (char*)(size_t)++str;
+}
+
+char* zcc_lexparen(const char* str)
+{
+    zassert(chrparen(*str));
+
+    char c = *str + 1;
+    c += (*str++ != '(');
+    while (*str && *str != c) {
+        switch (*str) {
+            case '(': case '{': case '[': {
+                str = zcc_lexparen(str);
+                break;
+            }
+            case '"': case '\'': {
+                str = zcc_lexstr(str);
+                break;
+            }
+            default: ++str;
         }
     }
-    else if (chralpha(c)) {
-        while (str[i] && (chralpha(str[i]) || chrdigit(str[i]))) {
-            ++i;
-        }
+    return (char*)(size_t)++str;
+}
+
+char* zcc_lexnum(const char* str)
+{
+    zassert(chrdigit(*str) || (*str == '.' && chrdigit(str[1])));
+    while (*str && (chrdigit(*str) || chralpha(*str) || *str == '.')) {
+        str += 1 + ((*str == 'e' || *str == 'E' || *str == 'p' || *str == 'P') && (str[1] == '-' || str[1] == '+'));
     }
-    else {
-        ++i;
-        switch(c) {
+    return (char*)(size_t)str;
+}
+
+char* zcc_lexid(const char* str)
+{
+    zassert(chralpha(*str));
+    while (*str && (chralpha(*str) || chrdigit(*str))) {
+        ++str;
+    }
+    return (char*)(size_t)str;
+}
+
+char* zcc_lexop(const char* str)
+{
+    zassert(!chralpha(*str) && !chrdigit(*str));
+    const char* c = str++;
+    switch(*c) {
         case '#':
-            i += (str[i] == c);
+            str += (*str == *c);
             break;
         case '-':
-            if (str[i] == '>') {
-                ++i;
+            if (*str == '>') {
+                ++str;
                 break;
             }
         case '|':
         case '&':
         case '+':
-            if (str[i] == c) {
-                ++i;
+            if (*str == *c) {
+                ++str;
                 break;
             }
         case '!':
@@ -68,15 +112,83 @@ char* zcc_lex(const char* str, size_t* len)
         case '*':
         case '/':
         case '=':
-            i += (str[i] == '=');
+            str += (*str == '=');
             break;
         case '<':
         case '>':
-            i += (str[i] == c);
-            i += (str[i] == '=');
-        }
+            str += (*str == *c);
+            str += (*str == '=');
+    }
+    return (char*)(size_t)str;
+}
+
+int zcc_lextype(const char* str)
+{
+    if (chrstr(*str)) {
+        return ZTOK_STR;
     }
     
-    *len = i;
-    return (char*)(size_t)str;
+    if (chrdigit(*str) || (*str == '.' && chrdigit(str[1]))) {
+        return ZTOK_NUM;
+    }
+    
+    if (chralpha(*str)) {
+        return ZTOK_ID;
+    }
+    
+    if (*str >= 32) {
+        return ZTOK_SYM;
+    }
+    
+    return ZTOK_NULL;
+}
+
+char* zcc_lex(const char* str, size_t* len, int* flag)
+{
+    static char* (*zlex_funcs[5])(const char*) = {
+        &zcc_lexnull,
+        &zcc_lexid,
+        &zcc_lexnum,
+        &zcc_lexop,
+        &zcc_lexstr
+    };
+
+    if (str) {
+        str = zcc_lexspace(str);
+    }
+
+    if (!str) {
+        return NULL;
+    }
+
+    const char* c = str;
+    const int type = (zcc_lextype(str) >> 8);
+
+    str = zlex_funcs[type](str);
+    *len = str - c;
+    *flag = type;
+    
+    return (char*)(size_t)c;
+}
+
+ztok_t ztok_get(const char* str)
+{
+    ztok_t tok;
+    tok.str = zcc_lex(str, &tok.len, &tok.kind);
+    return tok;
+}
+
+ztok_t ztok_next(ztok_t tok)
+{
+    tok.str = zcc_lex(tok.str + tok.len, &tok.len, &tok.kind);
+    return tok;
+}
+
+ztok_t ztok_continue(ztok_t tok, const size_t steps)
+{
+    size_t i;
+    for (i = 0; i < steps; ++i) {
+        tok = ztok_next(tok);
+    }
+    return tok;
 }
