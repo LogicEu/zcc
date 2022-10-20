@@ -456,8 +456,8 @@ static string_t zcc_expand(const array_t* tokens, const char* self, const map_t*
                 else string_push_tok(&subst, body[j]);
             }
             
-            if (j + 1 < bcount) {
-                string_push_space(&subst, body[j], body[j + 1].str);
+            if (j + 1 < bcount && body[j + 1].str > body[j].str + body[j].len) {
+                string_push(&subst, " ");
             }
         }
 
