@@ -418,7 +418,8 @@ static string_t zcc_expand(const array_t* tokens, const char* self, const map_t*
             }
             ++j;
         }
-        --i;
+        
+        i -= !!args.size;
 
         if (args.size != macro->args.size) {
             zcc_log("Macro function call has different number of arguments at line %zu.\n", linecount);
@@ -464,7 +465,7 @@ static string_t zcc_expand(const array_t* tokens, const char* self, const map_t*
         array_t subtoks = zcc_tokenize(subst.data);
         string_t s = zcc_expand(&subtoks, self, defines, linecount);
         string_concat(&line, &s);
-        
+
         string_free(&s);
         string_free(&subst);
         array_free(&subtoks);
