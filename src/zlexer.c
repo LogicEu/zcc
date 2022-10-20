@@ -8,21 +8,15 @@ static char* zcc_lexnull(const char* str)
 }
 
 char* zcc_lexline(const char* str)
-{
-    zassert(str);
-
-    if (!*str) {
-        return NULL;
+{    
+    while (*str && *str != '\n') {
+        ++str;
     }
-    
-    char* end = zstrchr(str, '\n');
-    return !end ? (char*)(size_t)str + zstrlen(str) : end;
+    return (char*)(size_t)str;
 }
 
 char* zcc_lexspace(const char* str)
 {
-    zassert(str);
-
     while (*str && (*str == ' ' || *str == '\t')) {
         ++str;
     }
