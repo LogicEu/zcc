@@ -315,7 +315,7 @@ static string_t zcc_stringify(const array_t* args)
     string_t str = string_create("\"");
     for (i = 0; i < args->size; ++i) {
         string_t tmp, s = string_wrap_sized(toks[i].str, toks[i].len);
-        switch (toks->str[0]) {
+        switch (toks[i].str[0]) {
             case '"':
                 tmp = string_insert_before(&s, '\\', '\\');
                 s = string_insert_before(&tmp, '"', '\\');
@@ -325,7 +325,7 @@ static string_t zcc_stringify(const array_t* args)
                 s = string_insert_before(&s, '\\', '\\');
         }
         string_concat(&str, &s);
-        if (i + 1 < args->size) {
+        if (i + 1 < args->size && toks[i + 1].str > toks[i].str + toks[i].len) {
             string_push(&str, " ");
         }
     }
@@ -536,7 +536,6 @@ char* zcc_preprocess_macros(char* src, size_t* size, const char** includes)
         }
 
         array_t linetoks = zcc_tokenize(linestart);
-
         string_t l = zcc_expand(&linetoks, NULL, &defines, linecount);
         if (l.data) {
             const size_t n = tok.str - text.data;
@@ -546,6 +545,7 @@ char* zcc_preprocess_macros(char* src, size_t* size, const char** includes)
             linestart = text.data + i;
             lineend = zcc_lexline(linestart);
         }
+        array_free(&linetoks);
 
 zlexline:
         linestart = lineend + !!*lineend;
