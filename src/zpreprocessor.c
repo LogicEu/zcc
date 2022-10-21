@@ -19,6 +19,19 @@ static void string_push_tok(string_t* string, const ztok_t tok)
     string_push(string, zstrbuf(tok.str, tok.len));
 }
 
+static void string_wipe(string_t* string)
+{
+    size_t i;
+    for (i = 0; string->data[i]; ++i) {
+        if (string->data[i] == ' ') {
+            while (string->data[i] == ' ') {
+                string_remove_index(string, i);
+            }
+            string_push_at(string, " ", i++);
+        }
+    }
+}
+
 static void string_remove_trail(string_t* string)
 {
     if (string->size) {
@@ -112,6 +125,8 @@ static zmacro_t zmacro_create(const char* str, const size_t linecount)
     if (!macro.str.data) {
         return macro;
     }    
+
+    string_wipe(&macro.str);
 
     /* simple macro */
     if (*macro.str.data != '(') {
@@ -345,72 +360,78 @@ size_t zcc_macro_search(const array_t* params, const ztok_t tok)
     return 0;
 }
 
-static string_t zcc_expand(const array_t* tokens, const char* self, const map_t* defines, const size_t linecount)
+static size_t refcount = 0;
+
+static string_t zcc_expand(const array_t* tokens, const map_t* defines, const size_t linecount)
 {
+    static size_t refs[0xff];
+
     size_t i, j;
     string_t line = string_empty();
     ztok_t* toks = tokens->data;
-    const size_t count = tokens->size;
+    const size_t count = tokens->size;   
     for (i = 0; i < count; ++i) {
-
-        if (i > 0 && i + 1 < count && toks[i].str[0] == '#' && toks[i].str[1] == '#') {
-            string_t s = zcc_concatenate(toks[i - 1], toks[i + 1]);
+        
+        if (i + 2 < count && toks[i + 1].str[0] == '#' && toks[i + 1].str[1] == '#') {
+            string_t s = zcc_concatenate(toks[i], toks[i + 2]);
             string_remove_trail(&line);
-            string_remove_range(&line, line.size - toks[i - 1].len, line.size);
             string_concat(&line, &s);
             string_free(&s);
-            ++i;
+            i += 2;
             goto zlexspace;
         }
-
+        
         if (!chralpha(*toks[i].str)) {
             goto zlextok;
         }
-
+        
         const size_t find = zcc_defines_search(defines, toks[i]);
         if (!find) {
             goto zlextok;
         }
-
-        string_t* key = (string_t*)map_key_at(defines, find - 1);
-        if (self && !zmemcmp(key->data, self, key->size)) {
-            goto zlextok;
+        
+        for (j = 0; j < refcount; ++j) {
+            if (find == refs[j]) {
+                goto zlextok;
+            }
         }
-
+        
+        refs[refcount++] = find;
         zmacro_t* macro = map_value_at(defines, find - 1);
-
+        
         if (*macro->str.data != '(') {
-            string_t sub = zcc_expand(&macro->body, toks[i].str, defines, linecount);
+            string_t sub = zcc_expand(&macro->body, defines, linecount);
             string_concat(&line, &sub);
             string_free(&sub);
             goto zlexspace;
         }
-
+        
         if (i + 1 == count || *toks[i + 1].str != '(') {
             zcc_log("zcc warning: Macro function call must include parenthesis at line %zu.\n", linecount);
             goto zlextok;
         }
         ++i;
-
+        
         const char* close = zcc_lexparen(toks[i].str);
         if (!close) {
             zcc_log("Macro function call must close parenthesis at line '%zu'.\n", linecount);
             string_free(&line);
             return line;
         }
-
+        
         array_t args = array_create(sizeof(array_t));
        
         j = ++i;
         while (j < count && toks[j].str + toks[j].len < close) {
-            const int n = (j + 1 < count && *toks[j + 1].str == ')');
             if (chrparen(*toks[j].str)) {
                 close = zcc_lexparen(toks[j].str);
                 while (j < count && toks[j].str < close) {
                     ++j;
                 }
             }
-            else if (*toks[j].str == ',' || j + 1 == count || n) {
+
+            const int n = (toks[j].str < close && j + 1 < count && toks[j + 1].str + toks[j + 1].len >= close);
+            if (*toks[j].str == ',' || toks[j].str >= close || j + 1 >= count || n) {
                 j += n;
                 array_t arg = array_wrap_sized(toks + i, j - i, sizeof(ztok_t));
                 array_push(&args, &arg);
@@ -424,17 +445,29 @@ static string_t zcc_expand(const array_t* tokens, const char* self, const map_t*
         if (args.size != macro->args.size) {
             zcc_log("Macro function call has different number of arguments at line %zu.\n", linecount);
             string_free(&line);
-            return line;
+            break;
         }
-
+        
         const size_t bcount = macro->body.size;
         const ztok_t* body = macro->body.data;
         const array_t* argstrs = args.data;
-
+        
         string_t subst = string_empty();
         for (j = 0; j < bcount; ++j) {
             size_t found;
-            if (j + 1 < bcount && body[j].str[0] == '#' && body[j].str[1] != '#') {
+            if (j + 2 < bcount && *body[j + 1].str == '#' && body[j + 1].str[1] == '#') {
+                size_t n;
+                for (n = j + 2; j <= n; j += 2) {
+                    found = zcc_macro_search(&macro->args, body[j]);
+                    if (found--) {
+                        ztok_t* a = argstrs[found].data;
+                        ztok_t b = a[argstrs[found].size - 1];
+                        string_push(&subst, zstrbuf(a[0].str, b.str + b.len - a[0].str));
+                    }
+                    else string_push_tok(&subst, body[j]);
+                }
+            }
+            else if (j + 1 < bcount && *body[j].str == '#' && body[j].str[1] != '#') {
                 found = zcc_macro_search(&macro->args, body[j + 1]);
                 if (!found--) {
                     zcc_log("zcc error: '#' macro operator is not followed by macro parameter at line %zu.\n", linecount);
@@ -450,7 +483,10 @@ static string_t zcc_expand(const array_t* tokens, const char* self, const map_t*
             else {
                 found = zcc_macro_search(&macro->args, body[j]);
                 if (found--) {
-                    string_t s = zcc_expand(argstrs + found, self, defines, linecount);
+                    const size_t r = refcount;
+                    refcount = 0;
+                    string_t s = zcc_expand(argstrs + found, defines, linecount);
+                    refcount = r;
                     string_concat(&subst, &s);
                     string_free(&s);
                 }
@@ -461,9 +497,10 @@ static string_t zcc_expand(const array_t* tokens, const char* self, const map_t*
                 string_push(&subst, " ");
             }
         }
-
+        
         array_t subtoks = zcc_tokenize(subst.data);
-        string_t s = zcc_expand(&subtoks, self, defines, linecount);
+        refs[refcount++] = find;
+        string_t s = zcc_expand(&subtoks, defines, linecount);
         string_concat(&line, &s);
 
         string_free(&s);
@@ -474,7 +511,9 @@ static string_t zcc_expand(const array_t* tokens, const char* self, const map_t*
         goto zlexspace;
 
 zlextok:
+        
         string_push_tok(&line, toks[i]);
+        
 zlexspace:
         if (i + 1 < count) {
             string_push_space(&line, toks[i], toks[i + 1].str);
@@ -531,13 +570,14 @@ char* zcc_preprocess_macros(char* src, size_t* size, const char** includes)
             }
             /*else zcc_log("Illegal macro directive at line %zu.\n", linecount);*/
 
-            string_remove_range(&text, i, i + lineend - linestart);
+            string_remove_range(&text, i, i + lineend - linestart + 1);
             lineend = zcc_lexline(linestart);
             continue;
         }
 
         array_t linetoks = zcc_tokenize(linestart);
-        string_t l = zcc_expand(&linetoks, NULL, &defines, linecount);
+        string_t l = zcc_expand(&linetoks, &defines, linecount);
+        refcount = 0;
         if (l.data) {
             const size_t n = tok.str - text.data;
             string_remove_range(&text, n, n + lineend - tok.str);
