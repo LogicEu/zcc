@@ -21,24 +21,53 @@ void zexit(int status)
 
 int zatoi(const char* str)
 {
-    int i, j, n;
-    for (i = 0; str[i] >= '0' && str[i] <= '9'; ++i);
-    for (n = 0, j = 1, --i; i >= 0; --i) {
+    int i, j = 1, n = 0, neg = (str[0] == '-');
+    for (i = neg; str[i] >= '0' && str[i] <= '9'; ++i);
+    for (--i; i >= neg; --i) {
         n += (str[i] - '0') * j;
         j *= 10;
     }
-    return n;
+    return neg ? -n : n;
 }
 
 long zatol(const char* str)
 {
-    long i, j, n;
+    long i, j = 1, n = 0, neg = (str[0] == '-');
     for (i = 0; str[i] >= '0' && str[i] <= '9'; ++i);
-    for (n = 0, j = 1, --i; i >= 0; --i) {
+    for (--i; i >= neg; --i) {
         n += (str[i] - '0') * j;
         j *= 10;
     }
-    return n;
+    return neg ? -n : n;
+}
+
+int zitoa(int num, char* str, const int base)
+{
+    int i = 0, neg = 0;
+    if (!num) {
+        str[i++] = '0';
+        str[i] = 0;
+        return i;
+    }
+ 
+    if (num < 0 && base == 10) {
+        ++neg;
+        num = -num;
+    }
+ 
+    while (num) {
+        int rem = num % base;
+        str[i++] = (rem > 9) ? (rem - 10) + 'a' : rem + '0';
+        num = num / base;
+    }
+ 
+    if (neg) {
+        str[i++] = '-';
+    }
+ 
+    str[i] = 0;
+    zstrrev(str);
+    return i;
 }
 
 void* zmemcpy(void* dst, const void* src, size_t n)
@@ -58,6 +87,15 @@ int zmemcmp(const void* p1, const void* p2, size_t n)
         ++a, ++b, --n;
     }
     return n ? (*a - *b) : 0;
+}
+
+void* zmemset(void* dst, int val, size_t n)
+{
+    unsigned char* a = dst;
+    while (n--) {
+        *a++ = val;
+    }
+    return dst;
 }
 
 char* zstrcpy(char* dst, const char* src)
@@ -125,4 +163,15 @@ char* zstrstr(const char* big, const char* small)
         ++big;
     }
     return NULL;
+}
+
+char* zstrrev(char* str)
+{
+    size_t len = zstrlen(str), i = 0;
+    while (i < len) {
+        char c = str[i];
+        str[i++] = str[len - 1];
+        str[--len] = c;
+    }
+    return str;
 }

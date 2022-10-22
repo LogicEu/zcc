@@ -30,16 +30,3 @@ int zcc_parse(const char* str)
     (void)str;
     return ZCC_EXIT_SUCCESS;
 }
-
-/*znode_t zcc_parse(const char* str)
-{
-    ztok_t tok = ztok_get(str);
-    while (tok.str) {
-        switch (tok.kind & ZTOK_KIND_MASK) {
-            case ZTOK_ID:
-            case ZTOK_NUM:
-        }
-
-        tok = ztok_next(tok);
-    }
-}*/

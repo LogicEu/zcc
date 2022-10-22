@@ -1,20 +1,16 @@
 #include <zio.h>
 #include <zassert.h>
 #include <zcc.h>
-
-#define chrstr(c) (((c) == '\'') || ((c) == '"'))
-#define chrparen(c) (((c) == '(') || ((c) == '[') || ((c) == '{')) 
+#include <zsolver.h>
 
 int main(int argc, char** argv)
 {
-    zassert(argc > 1);
-    size_t len;
-    char* src = zcc_fread(argv[1], &len);
-    zassert(src);
-    char* p = zstrchr(src, '\n');
-    while (*p) {
-        p = zstrchr(++p, '\n');
+    if (argc < 2) {
+        zcc_log("Missing input expression.\n");
+        return 1;
     }
-    zfree(src);
+
+    long n = zcc_solve(argv[1]);
+    zcc_log("%s\n%ld\n", argv[1], n);
     return 0;
 }

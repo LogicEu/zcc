@@ -45,6 +45,14 @@
 #define ZTOK_SYM_SEPARATOR 0x000
 #define ZTOK_SYM_OP 0x001
 
+#define ZTOK_SYM_LEFT 0x000
+#define ZTOK_SYM_RIGHT 0x010
+#define ZTOK_SYM_UNARY 0x020
+
+#define ZTOK_SYM_OP_LEFT (ZTOK_SYM | ZTOK_SYM_OP | ZTOK_SYM_LEFT)
+#define ZTOK_SYM_OP_RIGHT (ZTOK_SYM | ZTOK_SYM_OP | ZTOK_SYM_RIGHT)
+#define ZTOK_SYM_OP_UNARY (ZTOK_SYM | ZTOK_SYM_OP | ZTOK_SYM_UNARY)
+
 #define ZTOK_STR_LITERAL 0x000
 #define ZTOK_STR_CHAR 0x001
 
@@ -75,5 +83,6 @@ char* zcc_lexop(const char* str);
 
 ztok_t ztok_get(const char* str);
 ztok_t ztok_next(ztok_t tok);
+ztok_t ztok_continue(ztok_t tok, const size_t steps);
 
 #endif
