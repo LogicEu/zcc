@@ -10,10 +10,10 @@ TEXE = ztest
 STD = -std=c89
 OPT = -O2 
 WFLAGS = -Wall -Wextra
-INC = -I. -Isrc
+INC = -I. -Isrc -Izlibc/src/include
 
 LDIR = lib
-LIB = utopia
+LIB = zlibc utopia
 
 LSTATIC = $(patsubst %,lib%.a,$(LIB))
 LPATHS = $(patsubst %,$(LDIR)/%,$(LSTATIC))

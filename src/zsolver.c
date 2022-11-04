@@ -1,7 +1,7 @@
 #include <zsolver.h>
-#include <zstd.h>
+#include <zintrinsics.h>
 #include <zlexer.h>
-#include <zassert.h>
+#include <zdbg.h>
 
 static int oppres(const ztok_t tok)
 {
@@ -79,7 +79,7 @@ long zcc_solve(const char* str)
 
     while (tok.str) {
         /*zcc_log("%s\n", tok.str);*/
-        zassert(!chralpha(*tok.str));
+        zassert(!_isalpha(*tok.str));
         switch (*tok.str) {
             case 0:
                 break;
@@ -116,7 +116,7 @@ long zcc_solve(const char* str)
                 stack[stackcount++] = tok;
                 ++u;
         }
-        tok = ztok_next(tok);
+        tok = ztok_nextl(tok);
     }
 
     /*long i;
@@ -142,5 +142,3 @@ long zcc_solve(const char* str)
     zcc_log("Result: %ld\n", out[outcount - 1]);*/
     return out[0];
 }
-
-#include <stdio.h>

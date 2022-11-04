@@ -1,7 +1,8 @@
 #ifndef ZCC_LEXER_H
 #define ZCC_LEXER_H
 
-#include <zstddef.h>
+#include <utopia/utopia.h>
+#include <zctype.h>
 
 /* flag masks */
 #define ZTOK_KIND_MASK 0x100
@@ -56,13 +57,9 @@
 #define ZTOK_STR_LITERAL 0x000
 #define ZTOK_STR_CHAR 0x001
 
-/* basic string boolean macros */
-#define chrspace(c) (((c) == ' ') || ((c) == '\n') || ((c) == '\t') || ((c) == '\r'))
-#define chrstr(c) (((c) == '\'') || ((c) == '"'))
-#define chrparen(c) (((c) == '(') || ((c) == '[') || ((c) == '{')) 
-#define chrbetween(c, a, b) (((c) >= (a)) && ((c) <= (b)))
-#define chrdigit(c) chrbetween(c, '0', '9')
-#define chralpha(c) (chrbetween(c, 'A', 'Z') || chrbetween(c, 'a', 'z') || ((c) == '_'))
+#define _isstr(c) (((c) == '\'') || ((c) == '"')) 
+#define _isparen(c) (((c) == '(') || ((c) == '{') || ((c) == '[')) 
+#define _isid(c) (_isalpha(c) || ((c) == '_'))
 
 typedef struct ztok_t {
     char* str;
@@ -83,6 +80,12 @@ char* zcc_lexop(const char* str);
 
 ztok_t ztok_get(const char* str);
 ztok_t ztok_next(ztok_t tok);
-ztok_t ztok_continue(ztok_t tok, const size_t steps);
+ztok_t ztok_nextl(ztok_t tok);
+ztok_t ztok_step(ztok_t tok, size_t steps);
+ztok_t ztok_stepl(ztok_t tok, size_t steps);
+
+array_t zcc_tokenize(const char* str);
+array_t zcc_tokenize_line(const char* str);
+array_t zcc_tokenize_range(const char* start, const char* end);
 
 #endif

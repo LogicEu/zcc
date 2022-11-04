@@ -1,5 +1,8 @@
 #include <zlexer.h>
-#include <zassert.h>
+#include <zstring.h>
+#include <zdbg.h>
+
+/* Basic composable lexing / tokenizing functions */
 
 static char* zcc_lexnull(const char* str)
 {
@@ -30,7 +33,7 @@ char* zcc_lexspace(const char* str)
 
 char* zcc_lexstr(const char* str)
 {
-    zassert(chrstr(*str));
+    zassert(_isstr(*str));
     
     const char c = *str++;
     while (*str && *str != c) {
@@ -41,7 +44,7 @@ char* zcc_lexstr(const char* str)
 
 char* zcc_lexparen(const char* str)
 {
-    zassert(chrparen(*str));
+    zassert(_isparen(*str));
 
     char c = *str + 1;
     c += (*str++ != '(');
@@ -58,13 +61,13 @@ char* zcc_lexparen(const char* str)
             default: ++str;
         }
     }
-    return (char*)(size_t)++str;
+    return (char*)(size_t)str + !!*str;
 }
 
 char* zcc_lexnum(const char* str)
 {
-    zassert(chrdigit(*str) || (*str == '.' && chrdigit(str[1])));
-    while (*str && (chrdigit(*str) || chralpha(*str) || *str == '.')) {
+    zassert(_isdigit(*str) || (*str == '.' && _isdigit(str[1])));
+    while (*str && (_isdigit(*str) || _isid(*str) || *str == '.')) {
         str += 1 + ((*str == 'e' || *str == 'E' || *str == 'p' || *str == 'P') && (str[1] == '-' || str[1] == '+'));
     }
     return (char*)(size_t)str;
@@ -72,8 +75,8 @@ char* zcc_lexnum(const char* str)
 
 char* zcc_lexid(const char* str)
 {
-    zassert(chralpha(*str));
-    while (*str && (chralpha(*str) || chrdigit(*str))) {
+    zassert(_isid(*str));
+    while (*str && (_isid(*str) || _isdigit(*str))) {
         ++str;
     }
     return (char*)(size_t)str;
@@ -81,7 +84,7 @@ char* zcc_lexid(const char* str)
 
 char* zcc_lexop(const char* str)
 {
-    zassert(!chralpha(*str) && !chrdigit(*str));
+    zassert(!_isid(*str) && !_isdigit(*str));
     const char* c = str++;
     switch(*c) {
         case '#':
@@ -112,30 +115,34 @@ char* zcc_lexop(const char* str)
         case '>':
             str += (*str == *c);
             str += (*str == '=');
+        case '.':
+            str += 2 * (str[0] == *c && str[1] == *c);
     }
     return (char*)(size_t)str;
 }
 
 int zcc_lextype(const char* str)
 {
-    if (chrstr(*str)) {
+    if (_isstr(*str)) {
         return ZTOK_STR;
     }
     
-    if (chrdigit(*str) || (*str == '.' && chrdigit(str[1]))) {
+    if (_isdigit(*str) || (*str == '.' && _isdigit(str[1]))) {
         return ZTOK_NUM;
     }
     
-    if (chralpha(*str)) {
+    if (_isid(*str)) {
         return ZTOK_ID;
     }
     
-    if (*str >= 32) {
+    if (_ispunct(*str)) {
         return ZTOK_SYM;
     }
     
     return ZTOK_NULL;
 }
+
+/* Main generic tokenization function */
 
 char* zcc_lex(const char* str, size_t* len, int* flag)
 {
@@ -165,6 +172,8 @@ char* zcc_lex(const char* str, size_t* len, int* flag)
     return (char*)(size_t)c;
 }
 
+/* Handy struct to handle tokens */
+
 ztok_t ztok_get(const char* str)
 {
     ztok_t tok;
@@ -174,15 +183,65 @@ ztok_t ztok_get(const char* str)
 
 ztok_t ztok_next(ztok_t tok)
 {
+    tok.str = zcc_lex(tok.str + tok.len + (tok.str[tok.len] == '\n'), &tok.len, &tok.kind);
+    return tok;
+}
+
+ztok_t ztok_nextl(ztok_t tok)
+{
     tok.str = zcc_lex(tok.str + tok.len, &tok.len, &tok.kind);
     return tok;
 }
 
-ztok_t ztok_continue(ztok_t tok, const size_t steps)
+ztok_t ztok_step(ztok_t tok, const size_t steps)
 {
     size_t i;
     for (i = 0; i < steps; ++i) {
         tok = ztok_next(tok);
     }
     return tok;
+}
+
+ztok_t ztok_stepl(ztok_t tok, const size_t steps)
+{
+    size_t i;
+    for (i = 0; i < steps; ++i) {
+        tok = ztok_nextl(tok);
+    }
+    return tok;
+}
+
+/* Tokenize strings and ranges of strings */
+
+array_t zcc_tokenize(const char* str)
+{
+    array_t tokens = array_create(sizeof(ztok_t));
+    ztok_t tok = ztok_get(str);
+    while (tok.str) {
+        array_push(&tokens, &tok);
+        tok = ztok_next(tok);
+    }
+    return tokens;
+}
+
+array_t zcc_tokenize_line(const char* str)
+{
+    array_t tokens = array_create(sizeof(ztok_t));
+    ztok_t tok = ztok_get(str);
+    while (tok.str) {
+        array_push(&tokens, &tok);
+        tok = ztok_nextl(tok);
+    }
+    return tokens;
+}
+
+array_t zcc_tokenize_range(const char* start, const char* end)
+{
+    array_t tokens = array_create(sizeof(ztok_t));
+    ztok_t tok = ztok_get(start);
+    while (tok.str && tok.str < end) {
+        array_push(&tokens, &tok);
+        tok = ztok_next(tok);
+    }
+    return tokens;
 }

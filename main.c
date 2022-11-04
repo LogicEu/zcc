@@ -1,32 +1,29 @@
+#include <zstdlib.h>
 #include <zio.h>
-#include <zcc.h>
-#include <utopia/utopia.h>
-
-static array_t zcc_std_includes(void)
-{
-    static const char* stddirs[] = {"/usr/include/", "/usr/local/include/",
-        ("/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/"
-        "/usr/lib/clang/13.1.6/include"),
-        ("/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/"
-        "Developer/SDKs/MacOSX.sdk/usr/include")
-    };
-
-    array_t includes = array_create(sizeof(char*));
-    array_push_block(&includes, stddirs, sizeof(stddirs) / sizeof(stddirs[0]));
-    return includes;
-}
+#include <zintrinsics.h>
+#include <zlexer.h>
+#include <zparser.h>
+#include <zpreprocessor.h>
 
 int main(const int argc, const char** argv)
 {
-    int status = ZCC_EXIT_SUCCESS, ppprint = 0, i;
+    int status = Z_EXIT_SUCCESS, ppprint = 0, i;
     array_t infiles = array_create(sizeof(char*));
-    array_t includes = zcc_std_includes();
+    array_t predefs = array_create(sizeof(char*));
+    array_t includes = zcc_includes_std();
 
     for (i = 1; i < argc; ++i) {
         if (argv[i][0] == '-') {
             if (argv[i][1] == 'I') {
                 const char* ptr = argv[i] + 2;
                 array_push(&includes, &ptr);
+            }
+            if (argv[i][1] == 'D') {
+                if (i == argc - 1) {
+                    zcc_log("Missing input for option '-D'.\n");
+                    return Z_EXIT_FAILURE;
+                }
+                else array_push(&predefs, &argv[++i]);
             }
             if (argv[i][1] == 'E') {
                 ++ppprint;
@@ -37,12 +34,13 @@ int main(const int argc, const char** argv)
 
     if (!infiles.size) {
         zcc_log("Missing input file.\n");
-        status = ZCC_EXIT_FAILURE;
+        status = Z_EXIT_FAILURE;
         goto exit;
     }
 
     char* null = NULL;
     array_push(&includes, &null);
+    array_push(&predefs, &null);
 
     size_t len;
     char** filepaths = infiles.data;
@@ -51,7 +49,7 @@ int main(const int argc, const char** argv)
         char* src = zcc_fread(filepaths[i], &len);
         if (src) {
             src = zcc_preprocess_text(src, &len);
-            src = zcc_preprocess_macros(src, &len, includes.data);
+            src = zcc_preprocess_macros(src, &len, predefs.data, includes.data);
             if (ppprint) {
                 zcc_log("%s\n", src);
             }

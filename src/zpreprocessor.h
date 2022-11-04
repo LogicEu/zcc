@@ -4,6 +4,6 @@
 #include <zstddef.h>
 
 char* zcc_preprocess_text(char* str, size_t* size);
-char* zcc_preprocess_macros(char* src, size_t* size, const char** includes);
+char* zcc_preprocess_macros(char* src, size_t* size, const char** predefs, const char** includes);
 
 #endif

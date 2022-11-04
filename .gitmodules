@@ -1,3 +1,6 @@
 [submodule "utopia"]
 	path = utopia
 	url = git@github.com:LogicEu/utopia.git
+[submodule "zlibc"]
+	path = zlibc
+	url = git@github.com:LogicEu/zlibc.git

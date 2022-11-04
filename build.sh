@@ -12,10 +12,12 @@ src=(
 inc=(
     -I.
     -Isrc
+    -Izlibc/src/include
 )
 
 libs=(
-    -lutopia 
+    -lutopia
+    -lzlibc
 )
 
 flags=(
@@ -31,6 +33,7 @@ buildlib() {
 
 build() {
     [ ! -d lib ] && mkdir lib
+    buildlib zlibc static
     buildlib utopia static
 }
 

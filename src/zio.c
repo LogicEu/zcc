@@ -1,14 +1,13 @@
 #include <zio.h>
-#include <zstd.h>
+#include <zstdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
 
 int zcc_log(const char* fmt, ...)
 {
-    int ret;
     va_list args;
     va_start(args, fmt);
-    ret = vfprintf(stdout, fmt, args);
+    int ret = vfprintf(stdout, fmt, args);
     va_end(args);
     return ret;
 }
