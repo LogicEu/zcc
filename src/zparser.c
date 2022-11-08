@@ -49,7 +49,6 @@ void znode_connect(znode_t* parent, const znode_t* child)
 
 int zcc_parse(const char* str)
 {
-    size_t linecount = 0;
     ztok_t tok = ztok_get(str);
     while (!tok.str) {
         str = zcc_lexline(str);

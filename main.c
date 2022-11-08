@@ -5,12 +5,16 @@
 #include <zparser.h>
 #include <zpreprocessor.h>
 
+extern void zmalloc_inspect(void);
+
 int main(const int argc, const char** argv)
 {
     int status = Z_EXIT_SUCCESS, ppprint = 0, i;
     array_t infiles = array_create(sizeof(char*));
     array_t predefs = array_create(sizeof(char*));
     array_t includes = zcc_includes_std();
+
+    zatexit(&zmalloc_inspect);
 
     for (i = 1; i < argc; ++i) {
         if (argv[i][0] == '-') {
@@ -53,14 +57,17 @@ int main(const int argc, const char** argv)
             if (ppprint) {
                 zcc_log("%s\n", src);
             }
-            zcc_parse(src);
+            /* zcc_parse(src); */
             zfree(src);
         }
         else zcc_log("zcc could not open translation unit '%s'.\n", filepaths[i]);
     }
 
 exit:
+
     array_free(&infiles);
     array_free(&includes);
+    array_free(&predefs);
+
     return status;
 }

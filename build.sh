@@ -18,10 +18,16 @@ inc=(
 libs=(
     -lutopia
     -lzlibc
+    -lSystem
 )
 
 flags=(
     -std=c89
+    -nostdlib
+    -nostartfiles
+    -fno-stack-protector
+    -e
+    _start
     -Wall 
     -Wextra
     -O2
@@ -37,10 +43,19 @@ build() {
     buildlib utopia static
 }
 
+cmd() {
+   echo "$@" && $@
+}
+
 comp() {
     [ ! -d lib ] && echo "Use 'build' before 'comp'." && exit
-    echo "$cc ${flags[*]} ${inc[*]} $ldir ${libs[*]} ${src[*]} $1 -o $exe"
-    $cc ${flags[*]} ${inc[*]} $ldir ${libs[*]} ${src[*]} $1 -o $exe
+    if echo "$OSTYPE" | grep -q "darwin"; then
+        cmd $cc ${flags[*]} ${inc[*]} $ldir -lSystem ${libs[*]} ${src[*]} $1 -o $exe
+    elif echo "$OSTYPE" | grep -q "linux"; then
+        cmd $cc ${flags[*]} ${inc[*]} $ldir ${libs[*]} ${src[*]} $1 -o $exe
+    else
+        echo "This OS is not supported by this builld script yet..."
+    fi
 }
     
 clean() {

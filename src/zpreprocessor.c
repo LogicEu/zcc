@@ -54,17 +54,15 @@ static string_t zcc_concatenate(const ztok_t t1, const ztok_t t2)
     return s;
 }
 
-static string_t string_insert_before(string_t* string, const char mark, const char insert)
+static void string_insert_before(string_t* string, const char mark, const char insert)
 {
     size_t i;
     const char in[2] = {insert, 0};
-    string_t s = string_copy(string);
-    for (i = 0; i < s.size; ++i) {
-        if (s.data[i] == mark) {
-            string_push_at(&s, in, i++);
+    for (i = 0; i < string->size; ++i) {
+        if (string->data[i] == mark) {
+            string_push_at(string, in, i++);
         }
     }
-    return s;
 }
 
 /* macro handler struct */
@@ -82,7 +80,7 @@ static int zmacro_args(array_t* args, string_t* string, ztok_t tok, const size_t
     /*zcc_log("->%s\n", tok.str);*/
     while (tok.str && *tok.str != ')') {
         if (*tok.str == ',') {
-            tok = ztok_nextl(tok);
+            tok = ztok_next(tok);
             if (*tok.str == ')' || *tok.str == ',') {
                 zcc_log("Macro function definition does not allow empty argument parameter at line %zu.\n", linecount);
                 return Z_EXIT_FAILURE;
@@ -105,12 +103,12 @@ static int zmacro_args(array_t* args, string_t* string, ztok_t tok, const size_t
         else if (!_isid(*tok.str)) {
             zcc_log("Macro function definition only allows valid identifiers as argument parameter at line %zu.\n", linecount);
             /*zcc_log("%s\n", tok.str);*/
-            zexit(1);
+            zabort();
             return Z_EXIT_FAILURE;
         }
         /*zcc_logtok("<%s>\n", tok);*/
         array_push(args, &tok);
-        tok = ztok_nextl(tok);
+        tok = ztok_next(tok);
     }
 
     if (!tok.str || *tok.str != ')') {
@@ -144,24 +142,24 @@ static zmacro_t zmacro_create(const char* str, const size_t linecount)
 
     /* simple macro */
     if (*macro.str.data != '(') {
-        macro.body = zcc_tokenize_line(macro.str.data);
+        macro.body = zcc_tokenize(macro.str.data);
         return macro;
     }
 
     /* macro function */
     ztok_t tok = ztok_get(macro.str.data);
-    if (zmacro_args(&macro.args, &macro.str, ztok_nextl(tok), linecount)) {
+    if (zmacro_args(&macro.args, &macro.str, ztok_next(tok), linecount)) {
         zmacro_free(&macro);
         return macro;
     }
 
     if (macro.args.size) {
-        tok = ztok_nextl(*(ztok_t*)array_peek(&macro.args));
+        tok = ztok_next(*(ztok_t*)array_peek(&macro.args));
     }
-    else tok = ztok_nextl(tok);
+    else tok = ztok_next(tok);
 
-    tok = ztok_nextl(tok);
-    macro.body = zcc_tokenize_line(tok.str);
+    tok = ztok_next(tok);
+    macro.body = zcc_tokenize(tok.str);
     return macro;
 }
 
@@ -333,17 +331,20 @@ static string_t zcc_stringify(const array_t* args)
     const ztok_t* toks = args->data;
     string_t str = string_create("\"");
     for (i = 0; i < args->size; ++i) {
-        string_t tmp, s = string_wrap_sized(toks[i].str, toks[i].len);
+        
+        string_t s = string_ranged(toks[i].str, toks[i].str + toks[i].len);
         switch (toks[i].str[0]) {
             case '"':
-                tmp = string_insert_before(&s, '\\', '\\');
-                s = string_insert_before(&tmp, '"', '\\');
-                string_free(&tmp);
+                string_insert_before(&s, '\\', '\\');
+                string_insert_before(&s, '"', '\\');
                 break;
             case '\'':
-                s = string_insert_before(&s, '\\', '\\');
+                string_insert_before(&s, '\\', '\\');
         }
+
         string_concat(&str, &s);
+        string_free(&s);
+
         if (i + 1 < args->size && toks[i + 1].str > toks[i].str + toks[i].len) {
             string_push(&str, " ");
         }
@@ -762,8 +763,6 @@ char* zcc_preprocess_macros(char* src, size_t* size, const char** predefs, const
     static const char inc[] = "include", def[] = "define", ifdef[] = "if", undef[] = "undef";
     static const char warning[] = "warning", error[] = "error";
 
-    zassert(src);
-
     map_t defines = zcc_defines_std(predefs);
 
     size_t linecount = 0, i;
@@ -828,7 +827,7 @@ char* zcc_preprocess_macros(char* src, size_t* size, const char** predefs, const
 
         array_t linetoks = zcc_tokenize_line(linestart);
         string_t l = zcc_expand_line(&linetoks, &defines, linecount);
-        
+
         const size_t n = tok.str - text.data;
         string_remove_range(&text, n, n + lineend - tok.str);
         string_push_at(&text, l.data, n);

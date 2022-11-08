@@ -7,7 +7,7 @@ TEST = test.c
 EXE = zcc
 TEXE = ztest
 
-STD = -std=c89
+STD = -std=c89 -nostdlib -nostartfiles -fno-stack-protector -e _start
 OPT = -O2 
 WFLAGS = -Wall -Wextra
 INC = -I. -Isrc -Izlibc/src/include
@@ -20,10 +20,15 @@ LPATHS = $(patsubst %,$(LDIR)/%,$(LSTATIC))
 LFLAGS = $(patsubst %,-L%,$(LDIR))
 LFLAGS += $(patsubst %,-l%,$(LIB))
 
-CFLAGS = $(STD) $(OPT) $(WFLAGS) $(INC)
+OS = $(shell uname -s)
+ifeq ($(OS),Darwin)
+	OSFLAGS=-lSystem
+endif
+
+CFLAGS = $(STD) $(OPT) $(WFLAGS) $(INC) $(LFLAGS) $(OSFLAGS)
 
 $(EXE): $(LPATHS) $(SRC) $(MAIN)
-	$(CC) -o $@ $(SRC) $(MAIN) $(CFLAGS) $(LFLAGS)
+	$(CC) -o $@ $(SRC) $(MAIN) $(CFLAGS)
 
 $(LPATHS): $(LDIR) $(LSTATIC)
 	mv *.a lib/
@@ -35,10 +40,10 @@ $(LDIR)%.a: %
 	cd $^ && make && mv $@ ../
 
 exe: $(SRC) $(MAIN)
-	$(CC) -o $(EXE) $^ $(CFLAGS) $(LFLAGS)
+	$(CC) -o $(EXE) $^ $(CFLAGS)
 
 test: $(SRC) $(TEST)
-	$(CC) -o $(TEXE) $^ $(CFLAGS) $(LFLAGS)
+	$(CC) -o $(TEXE) $^ $(CFLAGS)
 
 clean: build.sh
 	./$^ $@
