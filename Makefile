@@ -7,7 +7,7 @@ TEST = test.c
 EXE = zcc
 TEXE = ztest
 
-STD = -std=c89 -nostdlib -nostartfiles -fno-stack-protector -e _start
+STD = -std=c89 -nostdlib -nostartfiles -fno-stack-protector
 OPT = -O2 
 WFLAGS = -Wall -Wextra
 INC = -I. -Isrc -Izlibc/src/include
@@ -22,7 +22,9 @@ LFLAGS += $(patsubst %,-l%,$(LIB))
 
 OS = $(shell uname -s)
 ifeq ($(OS),Darwin)
-	OSFLAGS=-lSystem
+    OSFLAGS=-e _start -lSystem
+else
+    OSFLAGS=-e start -lgcc -lc
 endif
 
 CFLAGS = $(STD) $(OPT) $(WFLAGS) $(INC) $(LFLAGS) $(OSFLAGS)

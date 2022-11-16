@@ -7,6 +7,9 @@
 #include <zstring.h>
 #include <zintrinsics.h>
 
+int zcc_printdefines = 0;
+int zcc_precomments = 1;
+
 /* some useful string manipulation helpers */
 
 #define string_wrap_sized(str, size) (string_t){str, size + 1, size};
@@ -165,16 +168,21 @@ static zmacro_t zmacro_create(const char* str, const size_t linecount)
 
 /* functions to handle define macros */
 
-static void zcc_defines_push(map_t* defines, const char* keystr, const char* valstr)
+int zcc_defines_push(map_t* defines, const char* keystr, const char* valstr)
 {
     string_t key = string_create(keystr);
-    zmacro_t value = zmacro_create(valstr, 0);
-    map_push(defines, &key, &value);
+    zmacro_t body = zmacro_create(valstr, 0);
+    if (map_push_if(defines, &key, &body)) {
+        zcc_log("Macro redefinition is not allowed (%s).\n", keystr);
+        string_free(&key);
+        zmacro_free(&body);
+        return Z_EXIT_FAILURE;
+    }
+    return Z_EXIT_SUCCESS;
 }
 
-static map_t zcc_defines_std(const char** predefs)
+map_t zcc_defines_std(void)
 {
-    size_t i;
     map_t defines = map_create(sizeof(string_t), sizeof(zmacro_t));
 
     zcc_defines_push(&defines, "__STDC__", "1");
@@ -197,21 +205,17 @@ static map_t zcc_defines_std(const char** predefs)
     zcc_defines_push(&defines, "__arm__", "1");
 #endif
 
-    for (i = 0; predefs[i]; ++i) {
-        zcc_defines_push(&defines, predefs[i], NULL);
-    }
-
     return defines;
 }
 
-static void zcc_defines_free(map_t* defines)
+void zcc_defines_free(map_t* defines, const size_t from)
 {
     size_t i;
     const size_t count = defines->size;
     string_t* keys = defines->keys;
     zmacro_t* defs = defines->values;
-    for (i = 0; i < count; ++i) {
-        /*zcc_log("'%s' -> '%s'\n", keys[i].data, defs[i].str.data);*/
+    for (i = from; i < count; ++i) {
+        /*zcc_log("%s -> %s\n", keys[i].data, defs[i].str.data);*/
         string_free(keys + i);
         zmacro_free(defs + i);
     }
@@ -219,6 +223,23 @@ static void zcc_defines_free(map_t* defines)
 }
 
 /* preprocessing directive function implementations */
+
+int zcc_defines_undef(map_t* defines, const char* key)
+{
+    const size_t find = map_search(defines, &key);
+    if (!find) {
+        return Z_EXIT_FAILURE;
+    }
+
+    string_t k = *(string_t*)map_key_at(defines, find - 1);
+    zmacro_t d = *(zmacro_t*)map_value_at(defines, find - 1);
+
+    map_remove(defines, &k);
+    string_free(&k);
+    zmacro_free(&d);
+
+    return Z_EXIT_SUCCESS;
+}
 
 static int zcc_undef(map_t* defines, ztok_t tok, const size_t linecount)
 {
@@ -228,44 +249,27 @@ static int zcc_undef(map_t* defines, ztok_t tok, const size_t linecount)
         return Z_EXIT_FAILURE;
     }
     
-    const size_t find = zcc_map_search(defines, tok);
-    if (!find) {
-        return Z_EXIT_FAILURE;
-    }
-
-    string_t k = *(string_t*)map_key_at(defines, find - 1);
-    zmacro_t d = *(zmacro_t*)map_value_at(defines, find - 1);
-    
-    map_remove(defines, &k);
-    string_free(&k);
-    zmacro_free(&d);
-    
-    return Z_EXIT_SUCCESS;
+    return zcc_defines_undef(defines, zstrbuf(tok.str, tok.len));
 }
 
-static int zcc_define(map_t* defines, ztok_t tok, const size_t linecount)
+static int zcc_define(map_t* defines, ztok_t tok)
 {
     tok = ztok_nextl(tok);
-    char* lineend = zstrchr(tok.str, '\n');
-    lineend = !lineend ? tok.str + zstrlen(tok.str) : lineend;
     if (!tok.str) {
         zcc_log("Macro #define is empty at line %zu.\n");
         return Z_EXIT_FAILURE;
     }
-    
-    const char c = *lineend;
-    *lineend = 0;
-    const string_t id = string_ranged(tok.str, tok.str + tok.len);
-    const zmacro_t def = zmacro_create(tok.str + tok.len, linecount);
-    *lineend = c;
 
-    const size_t find = map_push_if(defines, &id, &def);
-    if (find) {
-        zcc_log("Macro redefinition is not allowed at line %zu.\n", linecount);
-        return Z_EXIT_FAILURE;
-    }
+    char* end = zstrchr(tok.str, '\n'), buf[0xfff];
+    end = !end ? tok.str + zstrlen(tok.str) : end;
 
-    return Z_EXIT_SUCCESS;
+    const char* linestr = zstrbuf(tok.str, end - tok.str);
+    tok = ztok_get(linestr);
+
+    zmemcpy(buf, tok.str, tok.len);
+    buf[tok.len] = 0;
+
+    return zcc_defines_push(defines, buf, tok.str + tok.len);
 }
 
 static ztok_t zcc_include(const char** includes, ztok_t tok, const size_t linecount)
@@ -293,7 +297,7 @@ static ztok_t zcc_include(const char** includes, ztok_t tok, const size_t lineco
     }
 
     if (*tok.str != '<') {
-        zcc_log("Macro directive #include must have \"\" or <> symbol at line %zu.\n", linecount);
+        zcc_log("Macro directive #include must have \"\" or <> symbol at line %zu.'%s'\n", linecount, zstrbuf(tok.str, tok.len));
         return inc;
     }
 
@@ -307,6 +311,7 @@ static ztok_t zcc_include(const char** includes, ztok_t tok, const size_t lineco
     flen = ch - tok.str - 1;
     zmemcpy(filename, tok.str + 1, flen);
     filename[flen] = 0;
+
     for (i = 0; includes[i] && !inc.str; ++i) {
         dlen = zstrlen(includes[i]);
         zmemcpy(dir, includes[i], dlen);
@@ -317,11 +322,11 @@ static ztok_t zcc_include(const char** includes, ztok_t tok, const size_t lineco
         zmemcpy(buf + dlen, filename, flen + 1);
         inc.str = zcc_fread(buf, &inc.len);
     }
-
+    
     if (!inc.str) {
         zcc_log("Could not open header file '%s' at line %zu.\n", filename, linecount);
     }
-
+    
     return inc;
 }
 
@@ -364,51 +369,25 @@ size_t zcc_macro_search(const array_t* params, const ztok_t tok)
     }
     return 0;
 }
-#if 0
-static array_t zcc_parseargs(ztok_t tok, const char* close)
-{
-    zassert(tok.str);
-    zassert(*tok.str == '(');
-    array_t args = array_create(sizeof(ztok_t));
-    array_t tmp = array_create(sizeof(ztok_t));
-    tok = ztok_nextany(tok);
-    while (tok.str + tok.len < close) {
-        zcc_log("'%p' -->> '%zu'\n", tok.str, tok.len);
-        if (_isparen(*tok.str)) {
-            close = zcc_lexparen(tok.str);
-            while (*tok.str && tok.str < close) {
-                tok = ztok_nextany(tok);
-            }
-        }
-        ztok_t next = ztok_nextany(tok);
-        const int n = (tok.str < close && *next.str && next.str + next.len >= close);
-        if (*tok.str == ',' || tok.str >= close || !*next.str || n) {
-            j += n;
-            array_t arg = array_wrap_sized(toks + i, j - i, sizeof(ztok_t));
-            array_push(&args, &arg);
-            i = j + 1;
-        }
-        array_push(&tmp, )
-        tok = next;
-    }
-}
-#endif
+
 static string_t zcc_expand(const array_t* tokens, const map_t* defines, size_t* refs, const size_t linecount)
 {
+    zassert(refs);
     size_t refcount;
     for (refcount = 0; refs[refcount]; ++refcount);
 
-    const size_t perm = ((long)refs[refcount - 1] == -1);
+    const size_t perm = refcount ? ((long)refs[refcount - 1] == -1) : 0;
     if (perm) {
         refs[--refcount] = 0;
     }
-
+    
     size_t i, j;
     string_t line = string_empty();
     ztok_t* toks = tokens->data;
     const size_t count = tokens->size;   
+    
     for (i = 0; i < count; ++i) {
-
+        
         if (refcount && i + 2 < count && toks[i + 1].str[0] == '#' && toks[i + 1].str[1] == '#') {
             string_t s = zcc_concatenate(toks[i], toks[i + 2]);
             string_remove_trail(&line);
@@ -462,16 +441,9 @@ static string_t zcc_expand(const array_t* tokens, const map_t* defines, size_t* 
             return line;
         }
         
-        #if 1
         array_t args = array_create(sizeof(array_t));
- 
-        /*zcc_log("1.- '%p' -> '%zu'\n", toks[i].str, toks[i].len);
-        zcc_logtok("{%s}\n", toks[i]);
-        zcc_log("(%p, %zu), %zu, %zu\n", toks[i + 1].str, toks[i + 1].len, count, i);
-        zcc_logtok("{{%s}}\n", toks[i + 1]);*/
+
         j = ++i;
-        /*zcc_log("2.- '%p' -> '%zu'\n", toks[i].str, toks[i].len);
-        zcc_logtok("{%s}\n", toks[i]);*/
         while (j < count && toks[j].str + toks[j].len < close) {
             /*zcc_log("'%p' -->> '%zu'\n", toks[j].str, toks[j].len);*/
             if (_isparen(*toks[j].str)) {
@@ -490,21 +462,19 @@ static string_t zcc_expand(const array_t* tokens, const map_t* defines, size_t* 
             }
             ++j;
         }
-        /*zcc_log("3.- '%p' -->> '%zu', %zu\n", toks[i].str, toks[i].len, args.size);*/
         i -= !!args.size;
-        /*zcc_log("4.- '%p' -->> '%zu'\n\n", toks[i].str, toks[i].len);*/
-        #else
-        array_t args = zcc_parseargs(toks[i], close);
-        #endif
+
 
         if (args.size != macro->args.size) {
             ztok_t t = ztok_get("__VA_ARGS__");
             size_t found = zcc_macro_search(&macro->args, t);
-            if (found--) {
+            if (found) {
                 array_t* argarr = args.data;
-                while (found + 1 < args.size) {
-                    array_push_block(argarr + found, argarr[found + 1].data, argarr[found + 1].size);
-                    array_remove(&args, found + 1);
+                while (found < args.size) {
+                    const size_t size = (size_t)(argarr[found].data - argarr[found - 1].data + argarr[found].size * argarr[found].bytes) / argarr[found].bytes;
+                    argarr[found - 1].size = size;
+                    argarr[found - 1].capacity = size;
+                    array_remove(&args, found);
                 }
             }
             else {
@@ -513,11 +483,11 @@ static string_t zcc_expand(const array_t* tokens, const map_t* defines, size_t* 
                 break;
             }
         }
-
+        
         const size_t bcount = macro->body.size;
         const ztok_t* body = macro->body.data;
         const array_t* argstrs = args.data;
-
+        
         string_t subst = string_empty();
         for (j = 0; j < bcount; ++j) {
             size_t found;
@@ -562,7 +532,7 @@ static string_t zcc_expand(const array_t* tokens, const map_t* defines, size_t* 
                 string_push(&subst, " ");
             }
         }
-
+        
         array_t subtoks = zcc_tokenize_line(subst.data);
         refs[refcount++] = find;
         string_t s = zcc_expand(&subtoks, defines, refs, linecount);
@@ -571,12 +541,12 @@ static string_t zcc_expand(const array_t* tokens, const map_t* defines, size_t* 
         }
 
         string_concat(&line, &s);
-
+        
         string_free(&s);
         string_free(&subst);
         array_free(&subtoks);
         array_free(&args);
-
+        
         goto zlexspace;
 
 zlextok:
@@ -758,12 +728,26 @@ zlexifdefend:
     return s;
 }
 
-char* zcc_preprocess_macros(char* src, size_t* size, const char** predefs, const char** includes)
+/* 
+preprocessor:
+
+1.- Textual Preprocessing:
+--> Discard comments, do line slicing, replace dirigraphs...
+
+2.- Macro Directives:
+--> For every line in preprocessed text
+---> if first_token == '#'
+----> macro_directive(second_token)
+---> else
+
+*/
+#if 0
+char* zcc_preprocess_macros(char* src, size_t* size, const map_t* defs, const char** includes)
 {
     static const char inc[] = "include", def[] = "define", ifdef[] = "if", undef[] = "undef";
     static const char warning[] = "warning", error[] = "error";
 
-    map_t defines = zcc_defines_std(predefs);
+    map_t defines = map_copy(defs);
 
     size_t linecount = 0, i;
     string_t text = string_wrap_sized(src, *size);
@@ -795,7 +779,7 @@ char* zcc_preprocess_macros(char* src, size_t* size, const char** predefs, const
                 }
             }
             else if (!zmemcmp(tok.str, def, sizeof(def) - 1)) {
-                zcc_define(&defines, tok, linecount);
+                zcc_define(&defines, tok);
             }
             else if (!zmemcmp(tok.str, undef, sizeof(undef) - 1)) {
                 zcc_undef(&defines, tok, linecount);
@@ -842,11 +826,119 @@ zlexline:
         lineend = zcc_lexline(linestart);
     }
 
-    zcc_defines_free(&defines);
+    zcc_defines_free(&defines, defs->size);
     *size = text.size;
     return text.data;
 }
+#else
+static char* zcc_preprocess_directive(string_t* text, map_t* defines, const char** includes, char* linestart, size_t linecount)
+{
+    static const char inc[] = "include", def[] = "define", ifdef[] = "if", undef[] = "undef";
+    static const char warning[] = "warning", error[] = "error";
 
+    const size_t index = linestart - text->data;
+    const char* lineend = zcc_lexline(linestart);
+
+    ztok_t tok = ztok_get(linestart);
+    tok = ztok_nextl(tok);
+
+    if (!zmemcmp(tok.str, inc, sizeof(inc) - 1)) {
+        ztok_t inc = zcc_include(includes, tok, linecount);
+        if (inc.str) {
+            zcc_preprocess_text(inc.str, &inc.len);
+            string_push_at(text, inc.str, lineend + 1 - text->data);
+            zfree(inc.str);
+            linestart = text->data + index;
+            lineend = zcc_lexline(linestart);
+        }
+    }
+    else if (!zmemcmp(tok.str, def, sizeof(def) - 1)) {
+        if (zcc_printdefines) {
+            zcc_log("%s\n", zstrbuf(linestart, lineend - linestart));
+        }
+        zcc_define(defines, tok);
+    }
+    else if (!zmemcmp(tok.str, undef, sizeof(undef) - 1)) {
+        zcc_undef(defines, tok, linecount);
+    }
+    else if (!zmemcmp(tok.str, ifdef, sizeof(ifdef) - 1)) {
+        string_t inc = zcc_ifdef(defines, &linestart, linecount);
+        lineend = zcc_lexline(linestart);
+        string_remove_range(text, index, lineend - text->data);
+        string_push_at(text, inc.data, index);
+        string_free(&inc);
+        return text->data + index;
+    }
+    else if (!zmemcmp(tok.str, warning, sizeof(warning) - 1)) {
+        zcc_log("%s", zstrbuf(linestart, lineend - linestart + 1));
+    }
+    else if (!zmemcmp(tok.str, error, sizeof(error) - 1)) {
+        zcc_log("%s", zstrbuf(linestart, lineend - linestart + 1));
+        zexit(Z_EXIT_FAILURE);
+    }
+    else {
+        zcc_log("Illegal macro directive at line %zu.\n%s", linecount, zstrbuf(linestart, lineend - linestart + 1));
+        zexit(Z_EXIT_FAILURE);
+    }
+
+    string_remove_range(text, index, index + lineend - linestart + 1);
+    return linestart;
+}
+
+static char* zcc_preprocess_expand(string_t* text, const map_t* defines, const char* linestart, size_t linecount)
+{
+    const size_t index = linestart - text->data;
+    char* lineend = zcc_lexline(linestart);
+    array_t linetoks = zcc_tokenize_line(linestart);
+
+    size_t refs[0xfff];
+    zmemset(refs, 0, sizeof(refs));
+    string_t l = zcc_expand(&linetoks, defines, refs, linecount);
+
+    const ztok_t tok = ztok_get(linestart);
+    const size_t n = tok.str - text->data;
+    string_remove_range(text, n, n + lineend - tok.str);
+    
+    string_push_at(text, l.data, n);
+    array_free(&linetoks);
+    string_free(&l);
+    return text->data + index;
+}
+
+char* zcc_preprocess_macros(char* src, size_t* size, const map_t* defs, const char** includes)
+{
+    const size_t defsize = defs->size;
+    map_t defines = map_copy(defs);
+
+    size_t linecount = 0;
+    string_t text = string_wrap_sized(src, *size);
+    char* linestart = text.data;
+    char* lineend = zcc_lexline(text.data);
+    ztok_t tok;
+ 
+    while (*lineend) {
+        zcc_log(">> %s", zstrbuf(linestart, lineend - linestart + 1));
+        ++linecount;
+        tok = ztok_get(linestart);
+        if (tok.str) {
+            if (*tok.str == '#') {
+                linestart = zcc_preprocess_directive(&text, &defines, includes, linestart, linecount);
+                lineend = zcc_lexline(linestart);
+                continue;
+            } else {
+                linestart = zcc_preprocess_expand(&text, &defines, linestart, linecount);
+            }
+            lineend = zcc_lexline(linestart);
+        }
+        linestart = lineend + !!*lineend;
+        lineend = zcc_lexline(linestart);
+    }
+
+    zcc_defines_free(&defines, defsize);
+    *size = text.size;
+    return text.data;
+}
+#endif
 char* zcc_preprocess_text(char* str, size_t* size)
 {
     char* ch;
@@ -877,7 +969,10 @@ char* zcc_preprocess_text(char* str, size_t* size)
                 while (*ch && *ch != '\n') {
                     ++ch;
                 }
-                string_remove_range(&text, i, i + ch - (str + i));
+                if (zcc_precomments) {
+                    string_remove_range(&text, i, i + ch - (str + i));
+                }
+                else i = i + ch - (str + i) - 1;
             }
             else if (str[i + 1] == '*') {
                 ch = zstrstr(str + i + 2, "*/");
@@ -886,9 +981,11 @@ char* zcc_preprocess_text(char* str, size_t* size)
                     str[i] = 0;
                     return text.data;
                 }
-                
-                string_remove_range(&text, i + 1, i + ch - (str + i) + 2);
-                str[i] = ' ';
+                if (zcc_precomments) {
+                    string_remove_range(&text, i + 1, i + ch - (str + i) + 2);
+                    str[i] = ' ';
+                }
+                else i = i + ch - (str + i) + 1;
             }
             break;
         }

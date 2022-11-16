@@ -18,7 +18,6 @@ inc=(
 libs=(
     -lutopia
     -lzlibc
-    -lSystem
 )
 
 flags=(
@@ -26,11 +25,22 @@ flags=(
     -nostdlib
     -nostartfiles
     -fno-stack-protector
-    -e
-    _start
     -Wall 
     -Wextra
     -O2
+)
+
+macos=(
+    -e
+    _start
+    -lSystem
+)
+
+linux=(
+    -e
+    start
+    -lgcc
+    -lc
 )
 
 buildlib() {
@@ -50,17 +60,19 @@ cmd() {
 comp() {
     [ ! -d lib ] && echo "Use 'build' before 'comp'." && exit
     if echo "$OSTYPE" | grep -q "darwin"; then
-        cmd $cc ${flags[*]} ${inc[*]} $ldir -lSystem ${libs[*]} ${src[*]} $1 -o $exe
+        osflags=${macos[*]}
     elif echo "$OSTYPE" | grep -q "linux"; then
-        cmd $cc ${flags[*]} ${inc[*]} $ldir ${libs[*]} ${src[*]} $1 -o $exe
+        osflags=${linux[*]}
     else
         echo "This OS is not supported by this builld script yet..."
     fi
+    cmd $cc ${flags[*]} ${inc[*]} $ldir ${osflags} ${libs[*]} ${src[*]} $1 -o $exe
 }
     
 clean() {
     [ -d lib ] && rm -r lib && echo "Deleted 'lib'."
     [ -d $exe.dSYM ] && rm -r $exe.dSYM && echo "Deleted '$exe.dSYM'."
+    [ -d $texe.dSYM ] && rm -r $texe.dSYM && echo "Deleted '$texe.dSYM'."
     [ -f $exe ] && rm $exe && echo "Deleted '$exe'."
     [ -f $texe ] && rm $texe && echo "Deleted '$texe'."
     return 0
