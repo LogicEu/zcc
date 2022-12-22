@@ -71,6 +71,9 @@ comp() {
 }
     
 clean() {
+    pushd zlibc && ./build.sh clean && popd    
+    pushd utopia && ./build.sh clean && popd    
+
     [ -d lib ] && rm -r lib && echo "Deleted 'lib'."
     [ -d $exe.dSYM ] && rm -r $exe.dSYM && echo "Deleted '$exe.dSYM'."
     [ -d $texe.dSYM ] && rm -r $texe.dSYM && echo "Deleted '$texe.dSYM'."

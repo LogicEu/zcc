@@ -1,7 +1,7 @@
 # zcc makefile
 
 CC = gcc
-SRC = src/*.c
+SRC = src/*.c zlibc/src/crt/crt0.c
 MAIN = main.c
 TEST = test.c
 EXE = zcc

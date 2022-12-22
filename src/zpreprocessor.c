@@ -13,7 +13,7 @@ int zcc_precomments = 1;
 /* some useful string manipulation helpers */
 
 #define string_wrap_sized(str, size) (string_t){str, size + 1, size};
-#define array_wrap_sized(data, size, bytes) (array_t){data, bytes, size + 1, size};
+#define vector_wrap_sized(data, size, bytes) (vector_t){data, bytes, size + 1, size};
 
 static void string_push_tok(string_t* string, const ztok_t tok)
 {
@@ -72,11 +72,11 @@ static void string_insert_before(string_t* string, const char mark, const char i
 
 typedef struct zmacro_t {
     string_t str;
-    array_t args;
-    array_t body;
+    vector_t args;
+    vector_t body;
 } zmacro_t;
 
-static int zmacro_args(array_t* args, string_t* string, ztok_t tok, const size_t linecount)
+static int zmacro_args(vector_t* args, string_t* string, ztok_t tok, const size_t linecount)
 {
     static const char vdots[] = "...", vargs[] = "__VA_ARGS__";
 
@@ -110,7 +110,7 @@ static int zmacro_args(array_t* args, string_t* string, ztok_t tok, const size_t
             return Z_EXIT_FAILURE;
         }
         /*zcc_logtok("<%s>\n", tok);*/
-        array_push(args, &tok);
+        vector_push(args, &tok);
         tok = ztok_next(tok);
     }
 
@@ -125,16 +125,16 @@ static int zmacro_args(array_t* args, string_t* string, ztok_t tok, const size_t
 static void zmacro_free(zmacro_t* macro)
 {
     string_free(&macro->str);
-    array_free(&macro->args);
-    array_free(&macro->body);
+    vector_free(&macro->args);
+    vector_free(&macro->body);
 }
 
 static zmacro_t zmacro_create(const char* str, const size_t linecount)
 {
     zmacro_t macro;
     macro.str = string_create(str);
-    macro.args = array_create(sizeof(ztok_t));
-    macro.body = array_create(sizeof(ztok_t));
+    macro.args = vector_create(sizeof(ztok_t));
+    macro.body = vector_create(sizeof(ztok_t));
 
     /* macro without body*/
     if (!macro.str.data) {
@@ -157,7 +157,7 @@ static zmacro_t zmacro_create(const char* str, const size_t linecount)
     }
 
     if (macro.args.size) {
-        tok = ztok_next(*(ztok_t*)array_peek(&macro.args));
+        tok = ztok_next(*(ztok_t*)vector_peek(&macro.args));
     }
     else tok = ztok_next(tok);
 
@@ -330,7 +330,7 @@ static ztok_t zcc_include(const char** includes, ztok_t tok, const size_t lineco
     return inc;
 }
 
-static string_t zcc_stringify(const array_t* args)
+static string_t zcc_stringify(const vector_t* args)
 {
     size_t i;
     const ztok_t* toks = args->data;
@@ -358,7 +358,7 @@ static string_t zcc_stringify(const array_t* args)
     return str;
 }
 
-size_t zcc_macro_search(const array_t* params, const ztok_t tok)
+size_t zcc_macro_search(const vector_t* params, const ztok_t tok)
 {
     size_t i = 0;
     const ztok_t* args = params->data;
@@ -370,7 +370,7 @@ size_t zcc_macro_search(const array_t* params, const ztok_t tok)
     return 0;
 }
 
-static string_t zcc_expand(const array_t* tokens, const map_t* defines, size_t* refs, const size_t linecount)
+static string_t zcc_expand(const vector_t* tokens, const map_t* defines, size_t* refs, const size_t linecount)
 {
     zassert(refs);
     size_t refcount;
@@ -441,7 +441,7 @@ static string_t zcc_expand(const array_t* tokens, const map_t* defines, size_t* 
             return line;
         }
         
-        array_t args = array_create(sizeof(array_t));
+        vector_t args = vector_create(sizeof(vector_t));
 
         j = ++i;
         while (j < count && toks[j].str + toks[j].len < close) {
@@ -456,8 +456,8 @@ static string_t zcc_expand(const array_t* tokens, const map_t* defines, size_t* 
             const int n = (toks[j].str < close && j + 1 < count && toks[j + 1].str + toks[j + 1].len >= close);
             if (*toks[j].str == ',' || toks[j].str >= close || j + 1 >= count || n) {
                 j += n;
-                array_t arg = array_wrap_sized(toks + i, j - i, sizeof(ztok_t));
-                array_push(&args, &arg);
+                vector_t arg = vector_wrap_sized(toks + i, j - i, sizeof(ztok_t));
+                vector_push(&args, &arg);
                 i = j + 1;
             }
             ++j;
@@ -469,12 +469,12 @@ static string_t zcc_expand(const array_t* tokens, const map_t* defines, size_t* 
             ztok_t t = ztok_get("__VA_ARGS__");
             size_t found = zcc_macro_search(&macro->args, t);
             if (found) {
-                array_t* argarr = args.data;
+                vector_t* argarr = args.data;
                 while (found < args.size) {
                     const size_t size = (size_t)(argarr[found].data - argarr[found - 1].data + argarr[found].size * argarr[found].bytes) / argarr[found].bytes;
                     argarr[found - 1].size = size;
                     argarr[found - 1].capacity = size;
-                    array_remove(&args, found);
+                    vector_remove(&args, found);
                 }
             }
             else {
@@ -486,7 +486,7 @@ static string_t zcc_expand(const array_t* tokens, const map_t* defines, size_t* 
         
         const size_t bcount = macro->body.size;
         const ztok_t* body = macro->body.data;
-        const array_t* argstrs = args.data;
+        const vector_t* argstrs = args.data;
         
         string_t subst = string_empty();
         for (j = 0; j < bcount; ++j) {
@@ -533,7 +533,7 @@ static string_t zcc_expand(const array_t* tokens, const map_t* defines, size_t* 
             }
         }
         
-        array_t subtoks = zcc_tokenize_line(subst.data);
+        vector_t subtoks = zcc_tokenize_line(subst.data);
         refs[refcount++] = find;
         string_t s = zcc_expand(&subtoks, defines, refs, linecount);
         if (!perm) {
@@ -544,8 +544,8 @@ static string_t zcc_expand(const array_t* tokens, const map_t* defines, size_t* 
         
         string_free(&s);
         string_free(&subst);
-        array_free(&subtoks);
-        array_free(&args);
+        vector_free(&subtoks);
+        vector_free(&args);
         
         goto zlexspace;
 
@@ -561,7 +561,7 @@ zlexspace:
     return line;
 }
 
-static string_t zcc_expand_line(const array_t* tokens, const map_t* defines, const size_t linecount)
+static string_t zcc_expand_line(const vector_t* tokens, const map_t* defines, const size_t linecount)
 {
     size_t refs[0xfff];
     zmemset(refs, 0, sizeof(refs));
@@ -646,14 +646,14 @@ static long zcc_ifdef_solve(const map_t* defines, ztok_t tok, size_t linecount)
     /*zcc_logtok(">%s<\n", tok);*/
     string_t tmp = zcc_ifdef_preexpand(defines, tok, linecount);
     /*zcc_log("{%s}\n", tmp.data);*/
-    array_t a = zcc_tokenize_line(tmp.data);
-    array_remove(&a, 0);
+    vector_t a = zcc_tokenize_line(tmp.data);
+    vector_remove(&a, 0);
 
     string_t s = zcc_expand_line(&a, defines, linecount);
     const long n = zcc_solve(s.data);
     /*zcc_log("[%s]\n%ld\n----------\n", s.data, !!n);*/
     
-    array_free(&a);
+    vector_free(&a);
     string_free(&tmp);
     string_free(&s);
     return n;
@@ -809,7 +809,7 @@ char* zcc_preprocess_macros(char* src, size_t* size, const map_t* defs, const ch
             continue;
         }
 
-        array_t linetoks = zcc_tokenize_line(linestart);
+        vector_t linetoks = zcc_tokenize_line(linestart);
         string_t l = zcc_expand_line(&linetoks, &defines, linecount);
 
         const size_t n = tok.str - text.data;
@@ -818,7 +818,7 @@ char* zcc_preprocess_macros(char* src, size_t* size, const map_t* defs, const ch
         linestart = text.data + i;
         lineend = zcc_lexline(linestart);
 
-        array_free(&linetoks);
+        vector_free(&linetoks);
         string_free(&l);
 
 zlexline:
@@ -889,7 +889,7 @@ static char* zcc_preprocess_expand(string_t* text, const map_t* defines, const c
 {
     const size_t index = linestart - text->data;
     char* lineend = zcc_lexline(linestart);
-    array_t linetoks = zcc_tokenize_line(linestart);
+    vector_t linetoks = zcc_tokenize_line(linestart);
 
     size_t refs[0xfff];
     zmemset(refs, 0, sizeof(refs));
@@ -900,7 +900,7 @@ static char* zcc_preprocess_expand(string_t* text, const map_t* defines, const c
     string_remove_range(text, n, n + lineend - tok.str);
     
     string_push_at(text, l.data, n);
-    array_free(&linetoks);
+    vector_free(&linetoks);
     string_free(&l);
     return text->data + index;
 }

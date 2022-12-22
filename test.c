@@ -4,27 +4,18 @@
 
 static char* zfile_read(const char* file)
 {
-    char c, *data;
-    size_t i = 0;
+    char *data;
+    size_t size;
+    struct stat st;
     int fd = zopen(file, O_RDONLY);
     if (fd == -1) {
         return NULL;
     }
     
-    while ((c = zread(fd, &c, 1)) != Z_EOF) {
-        ++i;
-    }
-
-    data = zmalloc(i);
-    zclose(fd);
-
-    fd = zopen(file, O_RDONLY);
-    if (fd == -1) {
-        zfree(data);
-        return NULL;
-    }
-
-    zread(fd, data, i);
+    zfstat(fd, &st);
+    size = st.st_size;
+    data = zmalloc(size);
+    zread(fd, data, size);
     zclose(fd);
     return data;
 }
@@ -36,12 +27,12 @@ int main(int argc, char** argv)
         return Z_EXIT_FAILURE;
     }
 
-    char* data = zfile_read(argv[i]);
+    char* data = zfile_read(argv[1]);
     if (!data) {
-        zprintf("Could not read file %s\n", argv[i]);
+        zprintf("Could not read file %s\n", argv[1]);
         return Z_EXIT_FAILURE;
     }
 
-    zfree(&data);
+    zfree(data);
     return Z_EXIT_SUCCESS;
 }
