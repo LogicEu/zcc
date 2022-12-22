@@ -27,7 +27,7 @@ znode_t znode_create(ztok_t tok)
 {
     znode_t node;
     node.token = tok;
-    node.children = array_create(sizeof(znode_t));
+    node.children = vector_create(sizeof(znode_t));
     return node;
 }
 
@@ -39,12 +39,12 @@ void znode_free(znode_t* node)
     for (i = 0; i < count; ++i) {
         znode_free(child++);
     }
-    array_free(&node->children);
+    vector_free(&node->children);
 }
 
 void znode_connect(znode_t* parent, const znode_t* child)
 {
-    array_push(&parent->children, child);
+    vector_push(&parent->children, child);
 }
 
 int zcc_parse(const char* str)

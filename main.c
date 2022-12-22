@@ -29,15 +29,15 @@ int main(const int argc, const char** argv)
     int status = Z_EXIT_SUCCESS, i;
     int ppprint = 0, printdefs = 0, preproc = 1;
 
-    array_t infiles = array_create(sizeof(char*));
-    array_t includes = zcc_includes_std();
+    vector_t infiles = vector_create(sizeof(char*));
+    vector_t includes = zcc_includes_std();
     map_t defines = zcc_defines_std();
 
     for (i = 1; i < argc; ++i) {
         if (argv[i][0] == '-') {
             if (argv[i][1] == 'I') {
                 const char* ptr = argv[i] + 2;
-                array_push(&includes, &ptr);
+                vector_push(&includes, &ptr);
             }
             else if (argv[i][1] == 'D') {
                 if (i == argc - 1) {
@@ -69,11 +69,11 @@ int main(const int argc, const char** argv)
                 preproc = 0;
             }
         } 
-        else array_push(&infiles, &argv[i]);
+        else vector_push(&infiles, &argv[i]);
     }
 
     char* null = NULL;
-    array_push(&includes, &null);
+    vector_push(&includes, &null);
 
     if (!infiles.size) {
         zcc_log("Missing input file.\n");
@@ -110,7 +110,7 @@ int main(const int argc, const char** argv)
 
 exit:
     zcc_defines_free(&defines, 0);
-    array_free(&infiles);
-    array_free(&includes);
+    vector_free(&infiles);
+    vector_free(&includes);
     return status;
 }

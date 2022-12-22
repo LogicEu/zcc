@@ -10,7 +10,7 @@ TEXE = ztest
 STD = -std=c89 -nostdlib -nostartfiles -fno-stack-protector
 OPT = -O2 
 WFLAGS = -Wall -Wextra
-INC = -I. -Isrc -Izlibc/src/include
+INC = -I. -Isrc -Izlibc/src/include -Iutopia
 
 LDIR = lib
 LIB = zlibc utopia
@@ -36,10 +36,10 @@ $(LPATHS): $(LDIR) $(LSTATIC)
 	mv *.a lib/
 
 $(LDIR):
-	mkdir $@
+	mkdir -p $@
 
 $(LDIR)%.a: %
-	cd $^ && make && mv $@ ../
+	cd $^ && $(MAKE) && mv bin/$@ ../
 
 exe: $(SRC) $(MAIN)
 	$(CC) -o $(EXE) $^ $(CFLAGS)

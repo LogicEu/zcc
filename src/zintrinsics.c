@@ -11,7 +11,7 @@ char* zstrbuf(const char* str, const size_t len)
     return buf;
 }
 
-array_t zcc_includes_std(void)
+vector_t zcc_includes_std(void)
 {
     static const char* stddirs[] = {"/usr/include/", "/usr/local/include/"
 #ifdef __APPLE__
@@ -22,8 +22,8 @@ array_t zcc_includes_std(void)
 #endif
     };
 
-    array_t includes = array_create(sizeof(char*));
-    array_push_block(&includes, stddirs, sizeof(stddirs) / sizeof(stddirs[0]));
+    vector_t includes = vector_create(sizeof(char*));
+    vector_push_block(&includes, stddirs, sizeof(stddirs) / sizeof(stddirs[0]));
     return includes;
 }
 

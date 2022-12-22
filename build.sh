@@ -13,6 +13,7 @@ inc=(
     -I.
     -Isrc
     -Izlibc/src/include
+    -Iutopia/
 )
 
 libs=(

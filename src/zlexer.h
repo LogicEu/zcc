@@ -84,8 +84,8 @@ ztok_t ztok_nextl(ztok_t tok);
 ztok_t ztok_step(ztok_t tok, size_t steps);
 ztok_t ztok_stepl(ztok_t tok, size_t steps);
 
-array_t zcc_tokenize(const char* str);
-array_t zcc_tokenize_line(const char* str);
-array_t zcc_tokenize_range(const char* start, const char* end);
+vector_t zcc_tokenize(const char* str);
+vector_t zcc_tokenize_line(const char* str);
+vector_t zcc_tokenize_range(const char* start, const char* end);
 
 #endif

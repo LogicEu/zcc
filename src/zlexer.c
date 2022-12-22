@@ -12,7 +12,7 @@ static char* zcc_lexnull(const char* str)
 
 char* zcc_lexline(const char* str)
 {    
-    while (*str && *str != '\n') {
+    while (*str && *str != '\n' && *str != '\r') {
         ++str;
     }
     return (char*)(size_t)str;
@@ -213,34 +213,34 @@ ztok_t ztok_stepl(ztok_t tok, const size_t steps)
 
 /* Tokenize strings and ranges of strings */
 
-array_t zcc_tokenize(const char* str)
+vector_t zcc_tokenize(const char* str)
 {
-    array_t tokens = array_create(sizeof(ztok_t));
+    vector_t tokens = vector_create(sizeof(ztok_t));
     ztok_t tok = ztok_get(str);
     while (tok.str) {
-        array_push(&tokens, &tok);
+        vector_push(&tokens, &tok);
         tok = ztok_next(tok);
     }
     return tokens;
 }
 
-array_t zcc_tokenize_line(const char* str)
+vector_t zcc_tokenize_line(const char* str)
 {
-    array_t tokens = array_create(sizeof(ztok_t));
+    vector_t tokens = vector_create(sizeof(ztok_t));
     ztok_t tok = ztok_get(str);
     while (tok.str) {
-        array_push(&tokens, &tok);
+        vector_push(&tokens, &tok);
         tok = ztok_nextl(tok);
     }
     return tokens;
 }
 
-array_t zcc_tokenize_range(const char* start, const char* end)
+vector_t zcc_tokenize_range(const char* start, const char* end)
 {
-    array_t tokens = array_create(sizeof(ztok_t));
+    vector_t tokens = vector_create(sizeof(ztok_t));
     ztok_t tok = ztok_get(start);
     while (tok.str && tok.str < end) {
-        array_push(&tokens, &tok);
+        vector_push(&tokens, &tok);
         tok = ztok_next(tok);
     }
     return tokens;
