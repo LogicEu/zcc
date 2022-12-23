@@ -3,7 +3,7 @@
 
 /* constant reserved C keywords */
 
-hash_t zcc_keywords_std(void)
+struct hash zcc_keywords_std(void)
 {
     static const char* reserved[] = {
         "auto", "break", "case", "char", "const", "continue", "default", 
@@ -14,7 +14,7 @@ hash_t zcc_keywords_std(void)
     };
 
     size_t i;
-    hash_t keywords = hash_create(sizeof(char*));
+    struct hash keywords = hash_create(sizeof(char*));
     for (i = 0; i < sizeof(reserved) / sizeof(reserved[0]); ++i) {
         hash_push(&keywords, reserved + i);
     }
@@ -58,8 +58,8 @@ int zcc_parse(const char* str)
         tok = ztok_get(++str);
     }
     
-    const hash_t keywords = zcc_keywords_std();
-    map_t identifiers = map_create(sizeof(char*), sizeof(znode_t));
+    const struct hash keywords = zcc_keywords_std();
+    struct map identifiers = map_create(sizeof(char*), sizeof(znode_t));
 
     while (tok.str) {
         const char c = tok.str[tok.len];

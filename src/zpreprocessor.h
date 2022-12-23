@@ -3,12 +3,12 @@
 
 #include <utopia/utopia.h>
 
-map_t zcc_defines_std(void);
-int zcc_defines_push(map_t* defines, const char* keystr, const char* valstr);
-int zcc_defines_undef(map_t* defines, const char* key);
-void zcc_defines_free(map_t* defines, const size_t from);
+struct map zcc_defines_std(void);
+int zcc_defines_push(struct map* defines, const char* keystr, const char* valstr);
+int zcc_defines_undef(struct map* defines, const char* key);
+void zcc_defines_free(struct map* defines, const size_t from);
 
 char* zcc_preprocess_text(char* str, size_t* size);
-char* zcc_preprocess_macros(char* src, size_t* size, const map_t* defines, const char** includes);
+char* zcc_preprocess_macros(char* src, size_t* size, const struct map* defines, const char** includes);
 
 #endif

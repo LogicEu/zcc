@@ -11,7 +11,7 @@ extern int zcc_precomments;
 extern int zcc_printdefines;
 extern void zmalloc_inspect(void);
 
-static int zcc_defines_define(map_t* defines, const char* str)
+static int zcc_defines_define(struct map* defines, const char* str)
 {
     ztok_t tok = ztok_get(str);
     char* eq = zstrchr(str, '='), *s = zstrbuf(tok.str, tok.len);
@@ -29,9 +29,9 @@ int main(const int argc, const char** argv)
     int status = Z_EXIT_SUCCESS, i;
     int ppprint = 0, printdefs = 0, preproc = 1;
 
-    vector_t infiles = vector_create(sizeof(char*));
-    vector_t includes = zcc_includes_std();
-    map_t defines = zcc_defines_std();
+    struct vector infiles = vector_create(sizeof(char*));
+    struct vector includes = zcc_includes_std();
+    struct map defines = zcc_defines_std();
 
     for (i = 1; i < argc; ++i) {
         if (argv[i][0] == '-') {

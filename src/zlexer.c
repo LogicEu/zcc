@@ -213,9 +213,9 @@ ztok_t ztok_stepl(ztok_t tok, const size_t steps)
 
 /* Tokenize strings and ranges of strings */
 
-vector_t zcc_tokenize(const char* str)
+struct vector zcc_tokenize(const char* str)
 {
-    vector_t tokens = vector_create(sizeof(ztok_t));
+    struct vector tokens = vector_create(sizeof(ztok_t));
     ztok_t tok = ztok_get(str);
     while (tok.str) {
         vector_push(&tokens, &tok);
@@ -224,9 +224,9 @@ vector_t zcc_tokenize(const char* str)
     return tokens;
 }
 
-vector_t zcc_tokenize_line(const char* str)
+struct vector zcc_tokenize_line(const char* str)
 {
-    vector_t tokens = vector_create(sizeof(ztok_t));
+    struct vector tokens = vector_create(sizeof(ztok_t));
     ztok_t tok = ztok_get(str);
     while (tok.str) {
         vector_push(&tokens, &tok);
@@ -235,9 +235,9 @@ vector_t zcc_tokenize_line(const char* str)
     return tokens;
 }
 
-vector_t zcc_tokenize_range(const char* start, const char* end)
+struct vector zcc_tokenize_range(const char* start, const char* end)
 {
-    vector_t tokens = vector_create(sizeof(ztok_t));
+    struct vector tokens = vector_create(sizeof(ztok_t));
     ztok_t tok = ztok_get(start);
     while (tok.str && tok.str < end) {
         vector_push(&tokens, &tok);

@@ -42,7 +42,7 @@
 
 typedef struct znode_t {
     ztok_t token;
-    vector_t children;
+    struct vector children;
 } znode_t;
 
 int zcc_parse(const char* str);
