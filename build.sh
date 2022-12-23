@@ -1,84 +1,121 @@
 #!/bin/bash
 
-exe=zcc
-texe=ztest
+name=zcc
 cc=gcc
-ldir=-Llib
 
-src=(
-    src/*.c
-)
-
-inc=(
-    -I.
-    -Isrc
-    -Izlibc/src/include
-    -Iutopia/
-)
-
-libs=(
-    -lutopia
-    -lzlibc
-)
+tmpdir=tmp
+srcdir=src
+libdir=lib
 
 flags=(
     -std=c89
-    -nostdlib
-    -nostartfiles
-    -fno-stack-protector
-    -Wall 
+    -Wall
     -Wextra
+    -pedantic
     -O2
+    -Izlibc/src/include
+    -Iutopia
+    -Isrc
 )
 
-macos=(
+nostd=(
+    -nostdlib
+    -nostarfiles
+    -fno-stack-protector
     -e
-    _start
-    -lSystem
 )
 
-linux=(
-    -e
-    start
-    -lgcc
-    -lc
+libs=(
+    -lzlibc
+    -lutopia
 )
 
-buildlib() {
-    pushd $1 && ./build.sh $2 && mv *.a ../lib/ && popd
-}
-
-build() {
-    [ ! -d lib ] && mkdir lib
-    buildlib zlibc static
-    buildlib utopia static
-}
+if echo "$OSTYPE" | grep -q "darwin"; then
+    oslib=(
+        -lSystem
+    )
+    entry=_start
+elif echo "$OSTYPE" | grep -q "linux"; then
+    oslib=(
+        -lgcc 
+        -lc
+    )
+    entry=-start
+else
+    echo "This OS is not supported yet..." && exit
+fi
 
 cmd() {
-   echo "$@" && $@
+    echo "$@" && $@ || exit
+}
+
+check() {
+    [ -f $1.a ] || [ -f $1.so ] || [ -f $1.dylib ]
+}
+
+checkargs() {
+    for arg in $@
+    do
+        check $libdir/lib$arg || echo "Use 'build' to compile dependencies." && exit
+    done
 }
 
 comp() {
-    [ ! -d lib ] && echo "Use 'build' before 'comp'." && exit
-    if echo "$OSTYPE" | grep -q "darwin"; then
-        osflags=${macos[*]}
-    elif echo "$OSTYPE" | grep -q "linux"; then
-        osflags=${linux[*]}
-    else
-        echo "This OS is not supported by this builld script yet..."
-    fi
-    cmd $cc ${flags[*]} ${inc[*]} $ldir ${osflags} ${libs[*]} ${src[*]} $1 -o $exe
+    checkargs zlibc utopia
+    cmd mkdir -p $tmpdir
+    cmd $cc -c $src ${flags[*]}
+    cmd mv *.o $tmpdir/
+    cmd $cc $tmpdir/*.o -o $name ${nostd[*]} -e $entry -L$libdir ${libs[*]} ${oslib[*]}
 }
-    
-clean() {
-    pushd zlibc && ./build.sh clean && popd    
-    pushd utopia && ./build.sh clean && popd    
 
-    [ -d lib ] && rm -r lib && echo "Deleted 'lib'."
-    [ -d $exe.dSYM ] && rm -r $exe.dSYM && echo "Deleted '$exe.dSYM'."
-    [ -d $texe.dSYM ] && rm -r $texe.dSYM && echo "Deleted '$texe.dSYM'."
-    [ -f $exe ] && rm $exe && echo "Deleted '$exe'."
-    [ -f $texe ] && rm $texe && echo "Deleted '$texe'."
+buildlib() {
+    cmd ./$1/build.sh all && cmd cp bin/* ../$libdir
+}
+
+build() {
+    cmd mkdir -p $libdir
+    buildlib zlibc
+    buildlib utopia
+}
+
+cleand() {
+    [ -d $1 ] && cmd rm -r $1
+}
+
+cleanf() {
+    [ -f $1 ] && cmd rm $1
+}
+
+cleandir() {
+    pushd $1 && ./build.sh clean && popd
+}
+
+clean() {
+    cleandir zlibc
+    cleandir utopia
+    cleanf a.out
+    cleanf $name
+    cleand $libdir
+    cleand $tmpdir
+    return 0
+}
+
+install() {
+    [ "$EUID" -ne 0 ] && echo "Run with sudo to install" && exit
+    
+    build && comp
+    [ -f $name ] && mv $name /usr/local/bin/
+    
+    echo "Successfully installed $name"
+    return 0
+}
+
+uninstall() {
+    [ "$EUID" -ne 0 ] && echo "Run with sudo to uninstall" && exit
+
+    cleanf /usr/local/bin/$name
+
+    echo "Successfully uninstalled $name"
     return 0
 }
 
@@ -86,13 +123,19 @@ case "$1" in
     "build")
         build;;
     "comp")
-        comp "main.c";;
-    "test")
-        comp "test.c";;
+        comp;;
     "all")
         build && comp;;
+    "make")
+        make;;
     "clean")
         clean;;
+    "install")
+        install;;
+    "uninstall")
+        uninstall;;
     *)
-        echo "Use with 'build', 'comp' or 'clean'.";;
+        echo "Run with 'build' to compile dependencies or 'comp' to build executable"
+        echo "Use 'install' to build and install in /usr/local/bin"
+        echo "Use 'clean' to remove local builds"
 esac

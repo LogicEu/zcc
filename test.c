@@ -1,6 +1,7 @@
 #include <zsys.h>
 #include <zstdio.h>
 #include <zstdlib.h>
+#include <zlexer.h>
 
 static char* zfile_read(const char* file)
 {
@@ -20,6 +21,17 @@ static char* zfile_read(const char* file)
     return data;
 }
 
+static void zprinttok(const ztok_t* tok) 
+{
+    size_t i;
+    zputchar('\'');
+    for (i = 0; i < tok->len; ++i) {
+        zputchar(tok->str[i]);
+    }
+    zputchar('\'');
+    zputchar(tok->str[tok->len] == '\n' ? '\n' : ' ');
+}
+
 int main(int argc, char** argv)
 {
     if (argc < 2) {
@@ -33,6 +45,15 @@ int main(int argc, char** argv)
         return Z_EXIT_FAILURE;
     }
 
+    size_t i;
+    struct vector tokvec = zcc_tokenize(data);
+    const ztok_t* tokens = tokvec.data;
+    for (i = 0; i < tokvec.size; ++i) {
+        zprinttok(tokens + i);
+        zputchar(tokens[i].str[tokens[i].len] == '\n' ? '\n' : ' ');
+    }
+
+    vector_free(&tokvec);
     zfree(data);
     return Z_EXIT_SUCCESS;
 }

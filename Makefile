@@ -1,51 +1,91 @@
 # zcc makefile
 
+TARGET = zcc
+
 CC = gcc
-SRC = src/*.c zlibc/src/crt/crt0.c
-MAIN = main.c
-TEST = test.c
-EXE = zcc
-TEXE = ztest
-
-STD = -std=c89 -nostdlib -nostartfiles -fno-stack-protector
-OPT = -O2 
+STD = -std=c89
 WFLAGS = -Wall -Wextra
-INC = -I. -Isrc -Izlibc/src/include -Iutopia
-
-LDIR = lib
+OPT = -O2
+INC = -Izlibc/src/include -Iutopia -Isrc
 LIB = zlibc utopia
+NOSTD = -nostdlib -nostartfiles -fno-stack-protector
 
-LSTATIC = $(patsubst %,lib%.a,$(LIB))
-LPATHS = $(patsubst %,$(LDIR)/%,$(LSTATIC))
-LFLAGS = $(patsubst %,-L%,$(LDIR))
-LFLAGS += $(patsubst %,-l%,$(LIB))
+SRCDIR = src
+TMPDIR = tmp
+LIBDIR = lib
+CRTDIR = zlibc/src/crt/
 
-OS = $(shell uname -s)
+SCRIPT = build.sh
+
+CRT = $(wildcard $(CRTDIR)/*.c)
+SRC = $(wildcard $(SRCDIR)/*.c)
+OBJS = $(patsubst $(SRCDIR)/%.c,$(TMPDIR)/%.o,$(SRC))
+CRTO = $(patsubst $(CRTDIR)/%.c,$(TMPDIR)/%.o,$(CRT))
+LIBS = $(patsubst %,$(LIBDIR)/lib%.a,$(LIB))
+LINC = -L$(LIBDIR)
+LINC += $(patsubst %,-l%,$(LIB))
+NOMAIN = $(filter-out $(TMPDIR)/main.o,$(OBJS))
+
+OS=$(shell uname -s)
 ifeq ($(OS),Darwin)
-    OSFLAGS=-e _start -lSystem
+	OSLIB = -lSystem
+	NOSTD += -e _start
+	SUFFIX = .dylib
 else
-    OSFLAGS=-e start -lgcc -lc
+	OSLIB = -lgcc -lc
+	NOSTD += -e start
+	SUFFIX = .so
 endif
 
-CFLAGS = $(STD) $(OPT) $(WFLAGS) $(INC) $(LFLAGS) $(OSFLAGS)
+DLIBS = $(patsubst %,$(LIBDIR)/lib%$(SUFFIX),$(LIB))
+CFLAGS = $(STD) $(WFLAGS) $(OPT) $(INC)
+LFLAGS = $(NOSTD) $(OPT) $(LINC) $(OSLIB)
 
-$(EXE): $(LPATHS) $(SRC) $(MAIN)
-	$(CC) -o $@ $(SRC) $(MAIN) $(CFLAGS)
+$(TARGET): $(OBJS) $(CRTO) $(LIBS)
+	$(CC) $(OBJS) $(CRTO) -o $@ $(LFLAGS)
 
-$(LPATHS): $(LDIR) $(LSTATIC)
-	mv *.a lib/
+.PHONY: test shared clean install uninstall
 
-$(LDIR):
+shared: $(OBJS) $(CRTO) $(DLIBS)
+	$(CC) $(OBJS) $(CRTO) -o $(TARGET) $(LFLAGS)
+
+test: $(NOMAIN) $(CRTO) $(LIBS)
+	$(CC) -c $@.c -o $@.o $(CFLAGS)
+	$(CC) $(NOMAIN) $(CRTO) $@.o $(LFLAGS)
+	rm $@.o
+
+$(LIBDIR)/lib%.a: %
+	cd $^ && $(MAKE) && cp bin/*.a ../$(LIBDIR)
+
+$(LIBDIR)/libutopia$(SUFFIX): utopia $(LIBDIR)/libzlibc$(SUFFIX)
+	cd $^ && $(MAKE) shared && cp bin/*$(SUFFIX) ../$(LIBDIR)
+
+$(LIBDIR)/libzlibc$(SUFFIX): zlibc
+	cd $^ && $(MAKE) shared && cp bin/*$(SUFFIX) ../$(LIBDIR)
+
+$(TMPDIR)/%.o: $(SRCDIR)/%.c
+	$(CC) -c $< -o $@ $(CFLAGS)
+
+$(LIBS): | $(LIBDIR)
+
+$(DLIBS): | $(LIBDIR)
+    
+$(OBJS): | $(TMPDIR)
+
+$(CRTO): $(CRT) | $(TMPDIR)
+	$(CC) -c $< -o $@ $(CFLAGS)
+
+$(TMPDIR):
 	mkdir -p $@
 
-$(LDIR)%.a: %
-	cd $^ && $(MAKE) && mv bin/$@ ../
+$(LIBDIR):
+	mkdir -p $@
 
-exe: $(SRC) $(MAIN)
-	$(CC) -o $(EXE) $^ $(CFLAGS)
+clean: $(SCRIPT)
+	./$^ $@
 
-test: $(SRC) $(TEST)
-	$(CC) -o $(TEXE) $^ $(CFLAGS)
+install: $(SCRIPT)
+	./$^ $@
 
-clean: build.sh
+uninstall: $(SCRIPT)
 	./$^ $@
