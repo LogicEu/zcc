@@ -13,25 +13,33 @@ extern void zmalloc_inspect(void);
 
 static int zcc_defines_define(struct map* defines, const char* str)
 {
+    char* eq, *s;
     ztok_t tok = ztok_get(str);
-    char* eq = zstrchr(str, '='), *s = zstrbuf(tok.str, tok.len);
+    eq = zstrchr(str, '=');
+    s = zstrbuf(tok.str, tok.len);
+
     if (eq) {
         *eq = ' ';
         zcc_log("%s, %s\n", s, tok.str + tok.len);
         return zcc_defines_push(defines, s, tok.str + tok.len);
     }
     zcc_log("%s, %s\n", s, "1");
+    
     return zcc_defines_push(defines, s, "1");
 }
 
 int main(const int argc, const char** argv)
 {
-    int status = Z_EXIT_SUCCESS, i;
+    size_t len;
+    char* src;
+    const char* null = NULL, **filepaths;
+    int i, filecount, status = Z_EXIT_SUCCESS;
     int ppprint = 0, printdefs = 0, preproc = 1;
-
-    struct vector infiles = vector_create(sizeof(char*));
-    struct vector includes = zcc_includes_std();
+    
+    struct vector infiles, includes;
     struct map defines = zcc_defines_std();
+    infiles = vector_create(sizeof(char*));
+    includes = zcc_includes_std();
 
     for (i = 1; i < argc; ++i) {
         if (argv[i][0] == '-') {
@@ -72,7 +80,6 @@ int main(const int argc, const char** argv)
         else vector_push(&infiles, &argv[i]);
     }
 
-    char* null = NULL;
     vector_push(&includes, &null);
 
     if (!infiles.size) {
@@ -88,11 +95,10 @@ int main(const int argc, const char** argv)
     
     /* zatexit(&zmalloc_inspect); */
     
-    size_t len;
-    char** filepaths = infiles.data;
-    const int filecount = (int)infiles.size;
+    filepaths = infiles.data;
+    filecount = (int)infiles.size;
     for (i = 0; i < filecount; ++i) {
-        char* src = zcc_fread(filepaths[i], &len);
+        src = zcc_fread(filepaths[i], &len);
         if (src) {
             src = zcc_preprocess_text(src, &len);
             if (preproc) {

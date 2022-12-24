@@ -10,10 +10,24 @@
 int zcc_printdefines = 0;
 int zcc_precomments = 1;
 
-/* some useful string manipulation helpers */
+static struct string string_wrap_sized(char* str, const size_t size)
+{
+    struct string string;
+    string.data = str;
+    string.capacity = size + 1;
+    string.size = size;
+    return string;
+}
 
-#define string_wrap_sized(str, size) (struct string){str, size + 1, size};
-#define vector_wrap_sized(data, size, bytes) (struct vector){data, bytes, size + 1, size};
+static struct vector vector_wrap_sized(void* data, const size_t size, const size_t bytes)
+{
+    struct vector vector;
+    vector.data = data;
+    vector.bytes = bytes;
+    vector.capacity = size + 1;
+    vector.size = size;
+    return vector;
+}
 
 static void string_push_tok(struct string* string, const ztok_t tok)
 {
@@ -60,15 +74,14 @@ static struct string zcc_concatenate(const ztok_t t1, const ztok_t t2)
 static void string_insert_before(struct string* string, const char mark, const char insert)
 {
     size_t i;
-    const char in[2] = {insert, 0};
+    char in[2] = {0, 0};
+    in[0] = insert;
     for (i = 0; i < string->size; ++i) {
         if (string->data[i] == mark) {
             string_push_at(string, in, i++);
         }
     }
 }
-
-/* macro handler struct */
 
 typedef struct zmacro_t {
     struct string str;
@@ -80,7 +93,6 @@ static int zmacro_args(struct vector* args, struct string* string, ztok_t tok, c
 {
     static const char vdots[] = "...", vargs[] = "__VA_ARGS__";
 
-    /*zcc_log("->%s\n", tok.str);*/
     while (tok.str && *tok.str != ')') {
         if (*tok.str == ',') {
             tok = ztok_next(tok);
@@ -92,11 +104,12 @@ static int zmacro_args(struct vector* args, struct string* string, ztok_t tok, c
         }
         
         if (!zmemcmp(tok.str, vdots, sizeof(vdots) - 1)) {
+            size_t n;
             if (tok.str[sizeof(vdots) - 1] != ')') {
                 zcc_log("Missing ')' in macro parameter list at line %zu.\n", linecount);
                 return Z_EXIT_FAILURE;
             }
-            size_t n = tok.str - string->data;
+            n = tok.str - string->data;
             string_remove_range(string, n, n + sizeof(vdots) - 1);
             string_push_at(string, vargs, n);
             tok.kind = ZTOK_ID;
@@ -105,11 +118,9 @@ static int zmacro_args(struct vector* args, struct string* string, ztok_t tok, c
         }
         else if (!_isid(*tok.str)) {
             zcc_log("Macro function definition only allows valid identifiers as argument parameter at line %zu.\n", linecount);
-            /*zcc_log("%s\n", tok.str);*/
             zabort();
             return Z_EXIT_FAILURE;
         }
-        /*zcc_logtok("<%s>\n", tok);*/
         vector_push(args, &tok);
         tok = ztok_next(tok);
     }
@@ -131,6 +142,7 @@ static void zmacro_free(zmacro_t* macro)
 
 static zmacro_t zmacro_create(const char* str, const size_t linecount)
 {
+    ztok_t tok;
     zmacro_t macro;
     macro.str = string_create(str);
     macro.args = vector_create(sizeof(ztok_t));
@@ -150,7 +162,7 @@ static zmacro_t zmacro_create(const char* str, const size_t linecount)
     }
 
     /* macro function */
-    ztok_t tok = ztok_get(macro.str.data);
+    tok = ztok_get(macro.str.data);
     if (zmacro_args(&macro.args, &macro.str, ztok_next(tok), linecount)) {
         zmacro_free(&macro);
         return macro;
@@ -166,12 +178,11 @@ static zmacro_t zmacro_create(const char* str, const size_t linecount)
     return macro;
 }
 
-/* functions to handle define macros */
-
 int zcc_defines_push(struct map* defines, const char* keystr, const char* valstr)
 {
+    zmacro_t body;
     struct string key = string_create(keystr);
-    zmacro_t body = zmacro_create(valstr, 0);
+    body = zmacro_create(valstr, 0);
     if (map_push_if(defines, &key, &body)) {
         zcc_log("Macro redefinition is not allowed (%s).\n", keystr);
         string_free(&key);
@@ -215,28 +226,27 @@ void zcc_defines_free(struct map* defines, const size_t from)
     struct string* keys = defines->keys;
     zmacro_t* defs = defines->values;
     for (i = from; i < count; ++i) {
-        /*zcc_log("%s -> %s\n", keys[i].data, defs[i].str.data);*/
         string_free(keys + i);
         zmacro_free(defs + i);
     }
     map_free(defines);
 }
 
-/* preprocessing directive function implementations */
-
 int zcc_defines_undef(struct map* defines, const char* key)
 {
+    zmacro_t* d;
+    struct string* k;
     const size_t find = map_search(defines, &key);
     if (!find) {
         return Z_EXIT_FAILURE;
     }
 
-    struct string k = *(struct string*)map_key_at(defines, find - 1);
-    zmacro_t d = *(zmacro_t*)map_value_at(defines, find - 1);
+    k = map_key_at(defines, find - 1);
+    d = map_value_at(defines, find - 1);
 
-    map_remove(defines, &k);
-    string_free(&k);
-    zmacro_free(&d);
+    map_remove(defines, k);
+    string_free(k);
+    zmacro_free(d);
 
     return Z_EXIT_SUCCESS;
 }
@@ -254,16 +264,18 @@ static int zcc_undef(struct map* defines, ztok_t tok, const size_t linecount)
 
 static int zcc_define(struct map* defines, ztok_t tok)
 {
+    char buf[0xfff];
+    const char *linestr, *end;
     tok = ztok_nextl(tok);
     if (!tok.str) {
         zcc_log("Macro #define is empty at line %zu.\n");
         return Z_EXIT_FAILURE;
     }
 
-    char* end = zstrchr(tok.str, '\n'), buf[0xfff];
+    end = zstrchr(tok.str, '\n');
     end = !end ? tok.str + zstrlen(tok.str) : end;
 
-    const char* linestr = zstrbuf(tok.str, end - tok.str);
+    linestr = zstrbuf(tok.str, end - tok.str);
     tok = ztok_get(linestr);
 
     zmemcpy(buf, tok.str, tok.len);
@@ -275,8 +287,9 @@ static int zcc_define(struct map* defines, ztok_t tok)
 static ztok_t zcc_include(const char** includes, ztok_t tok, const size_t linecount)
 {
     static char dir[0xfff] = "./";
+    const char* ch;
     char filename[0xfff], buf[0xfff];
-    size_t dlen, flen;
+    size_t dlen, flen, i;
     ztok_t inc = {NULL, 0, ZTOK_SRC};
     
     tok = ztok_nextl(tok);
@@ -301,13 +314,12 @@ static ztok_t zcc_include(const char** includes, ztok_t tok, const size_t lineco
         return inc;
     }
 
-    const char* ch = zstrchr(tok.str, '>');
+    ch = zstrchr(tok.str, '>');
     if (!ch) {
         zcc_log("Macro #include does not close '>' bracket at line %zu.\n", linecount);
         return inc;
     }
     
-    size_t i;
     flen = ch - tok.str - 1;
     zmemcpy(filename, tok.str + 1, flen);
     filename[flen] = 0;
@@ -372,19 +384,23 @@ size_t zcc_macro_search(const struct vector* params, const ztok_t tok)
 
 static struct string zcc_expand(const struct vector* tokens, const struct map* defines, size_t* refs, const size_t linecount)
 {
+    const char* close;
+    size_t refcount, bcount, find, found, perm, i, j;
+
+    zmacro_t* macro;
+    ztok_t* toks = tokens->data, *body;
+    const size_t count = tokens->size;
+
+    struct vector subtoks, args, *argstrs;
+    struct string s, subst, line = string_empty();
+
     zassert(refs);
-    size_t refcount;
     for (refcount = 0; refs[refcount]; ++refcount);
 
-    const size_t perm = refcount ? ((long)refs[refcount - 1] == -1) : 0;
+    perm = refcount ? ((long)refs[refcount - 1] == -1) : 0;
     if (perm) {
         refs[--refcount] = 0;
     }
-    
-    size_t i, j;
-    struct string line = string_empty();
-    ztok_t* toks = tokens->data;
-    const size_t count = tokens->size;   
     
     for (i = 0; i < count; ++i) {
         
@@ -401,7 +417,7 @@ static struct string zcc_expand(const struct vector* tokens, const struct map* d
             goto zlextok;
         }
 
-        const size_t find = zcc_map_search(defines, toks[i]);
+        find = zcc_map_search(defines, toks[i]);
         if (!find) {
             goto zlextok;
         }
@@ -412,14 +428,15 @@ static struct string zcc_expand(const struct vector* tokens, const struct map* d
             }
         }
 
-        zmacro_t* macro = map_value_at(defines, find - 1);
+        macro = map_value_at(defines, find - 1);
         if (!macro->str.data) {
             continue;
         }
 
         if (*macro->str.data != '(') {
+            struct string sub;
             refs[refcount++] = find;
-            struct string sub = zcc_expand(&macro->body, defines, refs, linecount);
+            sub = zcc_expand(&macro->body, defines, refs, linecount);
             if (!perm) {
                 refs[--refcount] = 0;
             }
@@ -434,18 +451,19 @@ static struct string zcc_expand(const struct vector* tokens, const struct map* d
         }
         ++i;
         
-        const char* close = zcc_lexparen(toks[i].str);
+        close = zcc_lexparen(toks[i].str);
         if (!close) {
             zcc_log("Macro function call must close parenthesis at line '%zu'.\n", linecount);
             string_free(&line);
             return line;
         }
         
-        struct vector args = vector_create(sizeof(struct vector));
+        args = vector_create(sizeof(struct vector));
 
         j = ++i;
         while (j < count && toks[j].str + toks[j].len < close) {
-            /*zcc_log("'%p' -->> '%zu'\n", toks[j].str, toks[j].len);*/
+            int n;
+
             if (_isparen(*toks[j].str)) {
                 close = zcc_lexparen(toks[j].str);
                 while (j < count && toks[j].str < close) {
@@ -453,11 +471,11 @@ static struct string zcc_expand(const struct vector* tokens, const struct map* d
                 }
             }
 
-            const int n = (toks[j].str < close && j + 1 < count && toks[j + 1].str + toks[j + 1].len >= close);
+            n = (toks[j].str < close && j + 1 < count && toks[j + 1].str + toks[j + 1].len >= close);
             if (*toks[j].str == ',' || toks[j].str >= close || j + 1 >= count || n) {
-                j += n;
-                struct vector arg = vector_wrap_sized(toks + i, j - i, sizeof(ztok_t));
+                struct vector arg = vector_wrap_sized(toks + i, j + n - i, sizeof(ztok_t));
                 vector_push(&args, &arg);
+                j += n;
                 i = j + 1;
             }
             ++j;
@@ -467,11 +485,11 @@ static struct string zcc_expand(const struct vector* tokens, const struct map* d
 
         if (args.size != macro->args.size) {
             ztok_t t = ztok_get("__VA_ARGS__");
-            size_t found = zcc_macro_search(&macro->args, t);
+            found = zcc_macro_search(&macro->args, t);
             if (found) {
                 struct vector* argarr = args.data;
                 while (found < args.size) {
-                    const size_t size = (size_t)(argarr[found].data - argarr[found - 1].data + argarr[found].size * argarr[found].bytes) / argarr[found].bytes;
+                    const size_t size = (size_t)((char*)argarr[found].data - (char*)argarr[found - 1].data + argarr[found].size * argarr[found].bytes) / argarr[found].bytes;
                     argarr[found - 1].size = size;
                     argarr[found - 1].capacity = size;
                     vector_remove(&args, found);
@@ -484,13 +502,12 @@ static struct string zcc_expand(const struct vector* tokens, const struct map* d
             }
         }
         
-        const size_t bcount = macro->body.size;
-        const ztok_t* body = macro->body.data;
-        const struct vector* argstrs = args.data;
+        bcount = macro->body.size;
+        body = macro->body.data;
+        argstrs = args.data;
         
-        struct string subst = string_empty();
+        subst = string_empty();
         for (j = 0; j < bcount; ++j) {
-            size_t found;
             if (j + 2 < bcount && *body[j + 1].str == '#' && body[j + 1].str[1] == '#') {
                 size_t n;
                 for (n = j + 2; j <= n; j += 2) {
@@ -511,7 +528,7 @@ static struct string zcc_expand(const struct vector* tokens, const struct map* d
                     string_push_tok(&subst, body[j]);
                     continue;
                 }
-                struct string s = zcc_stringify(argstrs + found);
+                s = zcc_stringify(argstrs + found);
                 string_concat(&subst, &s);
                 string_free(&s);
                 ++j;
@@ -520,7 +537,7 @@ static struct string zcc_expand(const struct vector* tokens, const struct map* d
                 found = zcc_macro_search(&macro->args, body[j]);
                 if (found--) {
                     refs[refcount] = -1;
-                    struct string s = zcc_expand(argstrs + found, defines, refs, linecount);
+                    s = zcc_expand(argstrs + found, defines, refs, linecount);
                     for (refcount = 0; refs[refcount]; ++refcount);
                     string_concat(&subst, &s);
                     string_free(&s);
@@ -533,9 +550,9 @@ static struct string zcc_expand(const struct vector* tokens, const struct map* d
             }
         }
         
-        struct vector subtoks = zcc_tokenize_line(subst.data);
+        subtoks = zcc_tokenize_line(subst.data);
         refs[refcount++] = find;
-        struct string s = zcc_expand(&subtoks, defines, refs, linecount);
+        s = zcc_expand(&subtoks, defines, refs, linecount);
         if (!perm) {
             refs[--refcount] = 0;
         }
@@ -563,8 +580,7 @@ zlexspace:
 
 static struct string zcc_expand_line(const struct vector* tokens, const struct map* defines, const size_t linecount)
 {
-    size_t refs[0xfff];
-    zmemset(refs, 0, sizeof(refs));
+    size_t refs[0xfff] = {0};
     struct string s = zcc_expand(tokens, defines, refs, linecount);
     return s;
 }
@@ -575,7 +591,6 @@ static struct string zcc_ifdef_preexpand(const struct map* defines, ztok_t tok, 
     
     size_t find;
     struct string s = string_ranged(tok.str, zcc_lexline(tok.str));
-    /*zcc_log("<%s>\n", s.data);*/
 
     if (!zmemcmp(s.data, ifdef, sizeof(ifdef) - 1)) {
         string_remove_range(&s, 0, sizeof(ifdef) - 1);
@@ -589,7 +604,6 @@ static struct string zcc_ifdef_preexpand(const struct map* defines, ztok_t tok, 
     tok = ztok_get(s.data);
     tok = ztok_nextl(tok);
     while (tok.str) {
-        /*zcc_logtok("[%s]\n", tok);*/
         if (*tok.str == '\'') {
             int n = tok.str[1 + (tok.str[1] == '\\')];
             n = zitoa(n, tok.str, 10);
@@ -611,15 +625,16 @@ static struct string zcc_ifdef_preexpand(const struct map* defines, ztok_t tok, 
             else {
                 find = zcc_map_search(defines, tok);
                 if (find) {
-                    /*zcc_logtok("<<<%s>>>\n", tok);*/
+                    const char* close;
                     zmacro_t* m = map_value_at(defines, find - 1);
-                    /*zcc_log("{{{%s}}}\n", m->str.data);*/
+
                     if (*m->str.data == '(') {
                         tok = ztok_nextl(tok);
                         if (!tok.str || *tok.str != '(') {
                             continue;
                         }
-                        char* close = zcc_lexparen(tok.str) - 1;
+                        
+                        close = zcc_lexparen(tok.str) - 1;
                         if (!close) {
                             zcc_log("Macro function call in #if line does not close parenthesis at line %zu\n", linecount);
                             continue;
@@ -643,15 +658,15 @@ static struct string zcc_ifdef_preexpand(const struct map* defines, ztok_t tok, 
 
 static long zcc_ifdef_solve(const struct map* defines, ztok_t tok, size_t linecount)
 {
-    /*zcc_logtok(">%s<\n", tok);*/
-    struct string tmp = zcc_ifdef_preexpand(defines, tok, linecount);
-    /*zcc_log("{%s}\n", tmp.data);*/
-    struct vector a = zcc_tokenize_line(tmp.data);
+    long n;
+    struct vector a;
+    struct string s, tmp = zcc_ifdef_preexpand(defines, tok, linecount);
+
+    a = zcc_tokenize_line(tmp.data);
     vector_remove(&a, 0);
 
-    struct string s = zcc_expand_line(&a, defines, linecount);
-    const long n = zcc_solve(s.data);
-    /*zcc_log("[%s]\n%ld\n----------\n", s.data, !!n);*/
+    s = zcc_expand_line(&a, defines, linecount);
+    n = zcc_solve(s.data);
     
     vector_free(&a);
     string_free(&tmp);
@@ -663,6 +678,7 @@ static struct string zcc_ifdef(const struct map* defines, char** linestart, size
 {
     static const char ifstr[] = "if", elsestr[] = "else", elif[] = "elif", endif[] = "endif";
 
+    size_t scope = 0;
     char* lend = zcc_lexline(*linestart), *lstart;
     ztok_t tok = ztok_nextl(ztok_get(*linestart));
 
@@ -674,7 +690,6 @@ static struct string zcc_ifdef(const struct map* defines, char** linestart, size
     lstart = lend + !!*lend;
     lend = zcc_lexline(lstart);
 
-    size_t scope = 0;
     while (*lend) {
         ++linecount;
 
@@ -728,109 +743,6 @@ zlexifdefend:
     return s;
 }
 
-/* 
-preprocessor:
-
-1.- Textual Preprocessing:
---> Discard comments, do line slicing, replace dirigraphs...
-
-2.- Macro Directives:
---> For every line in preprocessed text
----> if first_token == '#'
-----> macro_directive(second_token)
----> else
-
-*/
-#if 0
-char* zcc_preprocess_macros(char* src, size_t* size, const struct map* defs, const char** includes)
-{
-    static const char inc[] = "include", def[] = "define", ifdef[] = "if", undef[] = "undef";
-    static const char warning[] = "warning", error[] = "error";
-
-    struct map defines = map_copy(defs);
-
-    size_t linecount = 0, i;
-    struct string text = string_wrap_sized(src, *size);
-    char* linestart = text.data;
-    char* lineend = zcc_lexline(text.data);
-    ztok_t tok;
- 
-    while (*lineend) {
-
-        ++linecount;
-        i = linestart - text.data;
-        /*zcc_log(">> %s", zstrbuf(linestart, lineend - linestart + 1));*/
-        tok = ztok_get(linestart);
-
-        if (!tok.str) {
-            goto zlexline;
-        }
-        
-        if (*tok.str == '#') {
-            tok = ztok_nextl(tok);
-            if (!zmemcmp(tok.str, inc, sizeof(inc) - 1)) {
-                ztok_t inc = zcc_include(includes,tok, linecount);
-                if (inc.str) {
-                    zcc_preprocess_text(inc.str, &inc.len);
-                    string_push_at(&text, inc.str, lineend + 1 - text.data);
-                    zfree(inc.str);
-                    linestart = text.data + i;
-                    lineend = zcc_lexline(linestart);
-                }
-            }
-            else if (!zmemcmp(tok.str, def, sizeof(def) - 1)) {
-                zcc_define(&defines, tok);
-            }
-            else if (!zmemcmp(tok.str, undef, sizeof(undef) - 1)) {
-                zcc_undef(&defines, tok, linecount);
-            }
-            else if (!zmemcmp(tok.str, ifdef, sizeof(ifdef) - 1)) {
-                const char* mark = linestart;
-                struct string inc = zcc_ifdef(&defines, &linestart, linecount);
-                lineend = zcc_lexline(linestart);
-                string_remove_range(&text, mark - text.data, lineend - text.data);
-                string_push_at(&text, inc.data, i);
-                string_free(&inc);
-                linestart = text.data + i;
-                lineend = zcc_lexline(linestart);
-                continue;
-            }
-            else if (!zmemcmp(tok.str, warning, sizeof(warning) - 1)) {
-                zcc_log("%s", zstrbuf(linestart, lineend - linestart + 1));
-            }
-            else if (!zmemcmp(tok.str, error, sizeof(error) - 1)) {
-                zcc_log("%s", zstrbuf(linestart, lineend - linestart + 1));
-                zexit(Z_EXIT_FAILURE);
-            }
-            else zcc_log("Illegal macro directive at line %zu.\n%s", linecount, zstrbuf(linestart, lineend - linestart + 1));
-
-            string_remove_range(&text, i, i + lineend - linestart + 1);
-            lineend = zcc_lexline(linestart);
-            continue;
-        }
-
-        struct vector linetoks = zcc_tokenize_line(linestart);
-        struct string l = zcc_expand_line(&linetoks, &defines, linecount);
-
-        const size_t n = tok.str - text.data;
-        string_remove_range(&text, n, n + lineend - tok.str);
-        string_push_at(&text, l.data, n);
-        linestart = text.data + i;
-        lineend = zcc_lexline(linestart);
-
-        vector_free(&linetoks);
-        string_free(&l);
-
-zlexline:
-        linestart = lineend + !!*lineend;
-        lineend = zcc_lexline(linestart);
-    }
-
-    zcc_defines_free(&defines, defs->size);
-    *size = text.size;
-    return text.data;
-}
-#else
 static char* zcc_preprocess_directive(struct string* text, struct map* defines, const char** includes, char* linestart, size_t linecount)
 {
     static const char inc[] = "include", def[] = "define", ifdef[] = "if", undef[] = "undef";
@@ -887,16 +799,18 @@ static char* zcc_preprocess_directive(struct string* text, struct map* defines, 
 
 static char* zcc_preprocess_expand(struct string* text, const struct map* defines, const char* linestart, size_t linecount)
 {
+    ztok_t tok;
+    size_t refs[0xfff] = {0}, n;
     const size_t index = linestart - text->data;
-    char* lineend = zcc_lexline(linestart);
-    struct vector linetoks = zcc_tokenize_line(linestart);
+    struct vector linetoks;
+    struct string l;
+    const char* lineend = zcc_lexline(linestart);
+    
+    linetoks = zcc_tokenize_line(linestart);
+    l = zcc_expand(&linetoks, defines, refs, linecount);
 
-    size_t refs[0xfff];
-    zmemset(refs, 0, sizeof(refs));
-    struct string l = zcc_expand(&linetoks, defines, refs, linecount);
-
-    const ztok_t tok = ztok_get(linestart);
-    const size_t n = tok.str - text->data;
+    tok = ztok_get(linestart);
+    n = tok.str - text->data;
     string_remove_range(text, n, n + lineend - tok.str);
     
     string_push_at(text, l.data, n);
@@ -907,14 +821,16 @@ static char* zcc_preprocess_expand(struct string* text, const struct map* define
 
 char* zcc_preprocess_macros(char* src, size_t* size, const struct map* defs, const char** includes)
 {
+    ztok_t tok;
+    size_t linecount = 0;
+    char* linestart, *lineend;
     const size_t defsize = defs->size;
+    struct string text;
     struct map defines = map_copy(defs);
 
-    size_t linecount = 0;
-    struct string text = string_wrap_sized(src, *size);
-    char* linestart = text.data;
-    char* lineend = zcc_lexline(text.data);
-    ztok_t tok;
+    text = string_wrap_sized(src, *size);
+    linestart = text.data;
+    lineend = zcc_lexline(text.data);
  
     while (*lineend) {
         zcc_log(">> %s", zstrbuf(linestart, lineend - linestart + 1));
@@ -938,12 +854,13 @@ char* zcc_preprocess_macros(char* src, size_t* size, const struct map* defs, con
     *size = text.size;
     return text.data;
 }
-#endif
+
 char* zcc_preprocess_text(char* str, size_t* size)
 {
     char* ch;
     size_t linecount = 0, i;
     struct string text = string_wrap_sized(str, *size);
+
     for (i = 0; str[i]; ++i) {
         ch = str + i;
         switch (*ch) {

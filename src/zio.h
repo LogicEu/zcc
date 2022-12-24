@@ -2,10 +2,8 @@
 #define ZCC_IO_H
 
 #include <zstddef.h>
-#include <zstdio.h>
 
-#define zcc_log(...) zprintf(__VA_ARGS__)
-
+int zcc_log(const char* fmt, ...);
 char* zcc_fread(const char* filename, size_t* size);
 
-#endif
+#endif /* ZCC_IO_H */

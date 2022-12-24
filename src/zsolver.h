@@ -3,4 +3,4 @@
 
 long zcc_solve(const char* str);
 
-#endif
+#endif /* ZCC_SOLVER_H */

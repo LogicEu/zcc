@@ -34,26 +34,20 @@ static void zprinttok(const ztok_t* tok)
 
 int main(int argc, char** argv)
 {
+    char* data;
     if (argc < 2) {
         zprintf("Missing input file.\n");
         return Z_EXIT_FAILURE;
     }
 
-    char* data = zfile_read(argv[1]);
+    data = zfile_read(argv[1]);
     if (!data) {
         zprintf("Could not read file %s\n", argv[1]);
         return Z_EXIT_FAILURE;
     }
 
-    size_t i;
-    struct vector tokvec = zcc_tokenize(data);
-    const ztok_t* tokens = tokvec.data;
-    for (i = 0; i < tokvec.size; ++i) {
-        zprinttok(tokens + i);
-        zputchar(tokens[i].str[tokens[i].len] == '\n' ? '\n' : ' ');
-    }
+    zprintf("%s\n", data);
 
-    vector_free(&tokvec);
     zfree(data);
     return Z_EXIT_SUCCESS;
 }

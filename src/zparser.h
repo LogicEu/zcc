@@ -50,4 +50,4 @@ znode_t znode_create(ztok_t tok);
 void znode_connect(znode_t* parent, const znode_t* child);
 void znode_free(znode_t* node);
 
-#endif
+#endif /* ZCC_PARSER_H */

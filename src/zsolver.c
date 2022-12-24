@@ -75,7 +75,7 @@ static long op2(const long l, const long r, const char* p)
 long zcc_solve(const char* str)
 {
     long out[0xff], outcount = 0, stackcount = 0, n, u = 1;
-    ztok_t tok = ztok_get(str), stack[0xff];
+    ztok_t stack[0xff], tok = ztok_get(str);
 
     while (tok.str) {
         /*zcc_log("%s\n", tok.str);*/
@@ -83,7 +83,8 @@ long zcc_solve(const char* str)
         switch (*tok.str) {
             case 0:
                 break;
-            case '0' ... '9':
+            case '0': case '1': case '2': case '3': case '4':
+            case '5': case '6': case '7': case '8': case '9':
                 out[outcount++] = zatol(tok.str);
                 u = 0;
                 break;

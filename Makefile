@@ -4,11 +4,11 @@ TARGET = zcc
 
 CC = gcc
 STD = -std=c89
-WFLAGS = -Wall -Wextra
-OPT = -O2
+WFLAGS = -Wall -Wextra -pedantic
+OPT = -O2 -fno-stack-protector
 INC = -Izlibc/src/include -Iutopia -Isrc
 LIB = zlibc utopia
-NOSTD = -nostdlib -nostartfiles -fno-stack-protector
+NOSTD = -nostdlib -nostartfiles
 
 SRCDIR = src
 TMPDIR = tmp

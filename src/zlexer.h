@@ -88,4 +88,4 @@ struct vector zcc_tokenize(const char* str);
 struct vector zcc_tokenize_line(const char* str);
 struct vector zcc_tokenize_range(const char* start, const char* end);
 
-#endif
+#endif /* ZCC_LEXER_H */

@@ -33,9 +33,10 @@ char* zcc_lexspace(const char* str)
 
 char* zcc_lexstr(const char* str)
 {
+    char c;
     zassert(_isstr(*str));
     
-    const char c = *str++;
+    c = *str++;
     while (*str && *str != c) {
         str += (*str == '\\') + 1;
     }
@@ -44,9 +45,10 @@ char* zcc_lexstr(const char* str)
 
 char* zcc_lexparen(const char* str)
 {
+    char c;
     zassert(_isparen(*str));
 
-    char c = *str + 1;
+    c = *str + 1;
     c += (*str++ != '(');
     while (*str && *str != c) {
         switch (*str) {
@@ -84,8 +86,9 @@ char* zcc_lexid(const char* str)
 
 char* zcc_lexop(const char* str)
 {
+    const char* c;
     zassert(!_isid(*str) && !_isdigit(*str));
-    const char* c = str++;
+    c = str++;
     switch(*c) {
         case '#':
             str += (*str == *c);
@@ -154,6 +157,9 @@ char* zcc_lex(const char* str, size_t* len, int* flag)
         &zcc_lexstr
     };
 
+    int type;
+    const char* c;
+
     if (str) {
         str = zcc_lexspace(str);
     }
@@ -162,8 +168,8 @@ char* zcc_lex(const char* str, size_t* len, int* flag)
         return NULL;
     }
 
-    const char* c = str;
-    const int type = (zcc_lextype(str) >> 8);
+    c = str;
+    type = (zcc_lextype(str) >> 8);
 
     str = zlex_funcs[type](str);
     *len = str - c;
@@ -215,8 +221,9 @@ ztok_t ztok_stepl(ztok_t tok, const size_t steps)
 
 struct vector zcc_tokenize(const char* str)
 {
+    ztok_t tok;
     struct vector tokens = vector_create(sizeof(ztok_t));
-    ztok_t tok = ztok_get(str);
+    tok = ztok_get(str);
     while (tok.str) {
         vector_push(&tokens, &tok);
         tok = ztok_next(tok);
@@ -226,8 +233,9 @@ struct vector zcc_tokenize(const char* str)
 
 struct vector zcc_tokenize_line(const char* str)
 {
+    ztok_t tok;
     struct vector tokens = vector_create(sizeof(ztok_t));
-    ztok_t tok = ztok_get(str);
+    tok = ztok_get(str);
     while (tok.str) {
         vector_push(&tokens, &tok);
         tok = ztok_nextl(tok);
@@ -237,8 +245,9 @@ struct vector zcc_tokenize_line(const char* str)
 
 struct vector zcc_tokenize_range(const char* start, const char* end)
 {
+    ztok_t tok;
     struct vector tokens = vector_create(sizeof(ztok_t));
-    ztok_t tok = ztok_get(start);
+    tok = ztok_get(start);
     while (tok.str && tok.str < end) {
         vector_push(&tokens, &tok);
         tok = ztok_next(tok);

@@ -49,7 +49,10 @@ void znode_connect(znode_t* parent, const znode_t* child)
 
 int zcc_parse(const char* str)
 {
+    struct hash keywords;
+    struct map identifiers;
     ztok_t tok = ztok_get(str);
+    
     while (!tok.str) {
         str = zcc_lexline(str);
         if (!*str) {
@@ -58,8 +61,8 @@ int zcc_parse(const char* str)
         tok = ztok_get(++str);
     }
     
-    const struct hash keywords = zcc_keywords_std();
-    struct map identifiers = map_create(sizeof(char*), sizeof(znode_t));
+    keywords = zcc_keywords_std();
+    identifiers = map_create(sizeof(char*), sizeof(znode_t));
 
     while (tok.str) {
         const char c = tok.str[tok.len];

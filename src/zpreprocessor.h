@@ -11,4 +11,4 @@ void zcc_defines_free(struct map* defines, const size_t from);
 char* zcc_preprocess_text(char* str, size_t* size);
 char* zcc_preprocess_macros(char* src, size_t* size, const struct map* defines, const char** includes);
 
-#endif
+#endif /* ZCC_PREPROCESSOR_H */
