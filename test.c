@@ -15,9 +15,10 @@ static char* zfile_read(const char* file)
     
     zfstat(fd, &st);
     size = st.st_size;
-    data = zmalloc(size);
+    data = zmalloc(size + 1);
     zread(fd, data, size);
     zclose(fd);
+    data[size] = 0;
     return data;
 }
 
