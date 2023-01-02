@@ -4,10 +4,18 @@
 
 /* Basic composable lexing / tokenizing functions */
 
-static char* zcc_lexnull(const char* str)
+char* zcc_lexnull(const char* str)
 {
     (void)str;
     return NULL;
+}
+
+char* zcc_lexnone(const char* str)
+{
+    while (*str && !_isgraph(*str)) {
+        ++str;
+    }
+    return *str ? (char*)(size_t)str : NULL;
 }
 
 char* zcc_lexline(const char* str)

@@ -15,7 +15,8 @@
 #define ZTOK_NUM 0x200
 #define ZTOK_SYM 0x300
 #define ZTOK_STR 0x400
-#define ZTOK_SRC 0x500
+#define ZTOK_SPC 0x500
+#define ZTOK_SRC 0x600
 
 /* identifier subtypes */
 #define ZTOK_ID_USER 0x100
@@ -70,6 +71,8 @@ typedef struct ztok_t {
 char* zcc_lex(const char* str, size_t* len, int* flag);
 int zcc_lextype(const char* str);
 
+char* zcc_lexnull(const char* str);
+char* zcc_lexnone(const char* str);
 char* zcc_lexspace(const char* str);
 char* zcc_lexline(const char* str);
 char* zcc_lexparen(const char* str);
