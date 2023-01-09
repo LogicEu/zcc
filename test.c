@@ -215,16 +215,6 @@ static long zsolve_binary(const long l, const long r, const char* p)
     return 0;
 }
 
-typedef struct treenode* (*parser_f)(const char*, char**);
-
-struct treenode* zparse_object(const char* str, char** end);
-struct treenode* zparse_operator_postfix(const char* str, char** end);
-struct treenode* zparse_operator_access(const char* str, char** end);
-struct treenode* zparse_term(const char* str, char** end);
-struct treenode* zparse_paren(const char* str, char** end, parser_f parser);
-struct treenode* zparse_any(const char* str, char** end, parser_f parser, struct treenode* node);
-struct treenode* zparse_enum(const char* str, char** end, parser_f parser, const char c, struct treenode* node);
-
 static int zsolve_expr(const struct treenode* root, long* val)
 {
     const struct token *op;
@@ -324,6 +314,16 @@ static void ast_reduce(struct treenode* root)
 
 /* PARSER */
 
+typedef struct treenode* (*parser_f)(const char*, char**);
+
+struct treenode* zparse_object(const char* str, char** end);
+struct treenode* zparse_operator_postfix(const char* str, char** end);
+struct treenode* zparse_operator_access(const char* str, char** end);
+struct treenode* zparse_term(const char* str, char** end);
+struct treenode* zparse_paren(const char* str, char** end, parser_f parser);
+struct treenode* zparse_any(const char* str, char** end, parser_f parser, struct treenode* node);
+struct treenode* zparse_enum(const char* str, char** end, parser_f parser, const char c, struct treenode* node);
+
 int zparse_check(const char* str, char** end, const char c)
 {
     struct token tok = toknext(str);
@@ -398,45 +398,28 @@ struct treenode* zparse_operand(const char* str, char** end)
 
 struct treenode* zparse_sizeof(const char* str, char** end)
 {
-    struct treenode* expr = zparse_paren(*end, end, &zparse_object);
-    if (!expr) {
-        expr = zparse_term(str, end);
+    struct treenode* sizeofnode = zparse_token(str, end, "sizeof");
+    if (sizeofnode) {
+        struct treenode* expr = zparse_paren(*end, end, &zparse_object);
+        if (!expr) {
+            expr = zparse_term(*end, end);
+            if (!expr) {
+                zprintf("Illegal sizeof operand.\n");
+                treenode_free(sizeofnode);
+                return NULL;
+            }
+        }
+        treenode_push(sizeofnode, expr);
     }
-    return expr;
+    return sizeofnode;
 }
 
 struct treenode* zparse_operator_unary(const char* str, char** end)
 {
-    static const char sizeofstr[] = "sizeof";
-
     char c;
     struct token tok = toknext(str);
 
     c = tok.str[0];
-    if (c == '(') {
-        struct treenode* cast;
-        *end = tokend(tok);
-        cast = zparse_paren(*end, end, &zparse_object);
-        if (!cast) {
-            zprintf("Illegal casting operation.\n");
-        }
-        return cast;
-    }
-
-    if (tok.len == sizeof(sizeofstr) - 1 && !zmemcmp(tok.str, sizeofstr, tok.len)) {
-        struct treenode* sizeofnode, *expr;
-        sizeofnode = treenode_create(&tok, sizeof(struct token));
-        *end = tokend(tok);
-        expr = zparse_sizeof(*end, end);
-        if (!expr) {
-            zprintf("Illegal sizeof operation.\n");
-            treenode_free(sizeofnode);
-            return NULL;
-        }
-        treenode_push(sizeofnode, expr);
-        return sizeofnode;
-    }
-
     if (c != '+' && c != '-' && c != '~' && c != '!' && c != '&' && c != '*') {
         return NULL;
     }
@@ -447,7 +430,7 @@ struct treenode* zparse_operator_unary(const char* str, char** end)
 
 struct treenode* zparse_operator_binary(const char* str, char** end)
 {
-    static const char* nonbinary = "]}),;:!~\\@#$`'\"";
+    static const char* nonbinary = "]}),;:?~\\@#$`'\"";
 
     int i;
     char c;
@@ -469,6 +452,35 @@ struct treenode* zparse_operator_binary(const char* str, char** end)
 }
 
 struct treenode* zparse_expr(const char* str, char** end);
+
+struct treenode* zparse_operator_ternary(const char* str, char** end)
+{
+    struct treenode* operator = zparse_char(str, end, '?');
+    if (operator) {
+        struct treenode* expr = zparse_expr(*end, end);
+        if (!expr) {
+            zprintf("Expected expression after '?' ternary operator.\n");
+            treenode_free(operator);
+            return NULL;
+        }
+        treenode_push(operator, expr);
+
+        if (!zparse_check(*end, end, ':')) {
+            zprintf("Expected ':' after first ternary expression.\n");
+            treenode_free(operator);
+            return NULL;
+        }
+
+        expr = zparse_expr(*end, end);
+        if (!expr) {
+            zprintf("Expected expression after ':' ternary operator.\n");
+            treenode_free(operator);
+            return NULL;
+        }
+        treenode_push(operator, expr);
+    }
+    return operator;
+}
 
 struct treenode* zparse_funcall(const char* str, char** end)
 {
@@ -549,21 +561,35 @@ struct treenode* zparse_term(const char* str, char** end)
 {
     struct treenode *term = zparse_operator_unary(str, end);
     if (term) {
-        treenode_push(term, zparse_term(*end, end));
+        struct treenode* realterm = zparse_term(*end, end);
+        if (!realterm) {
+            zprintf("Expected term after unary operator %s in expression.\n", tokbuf(term->data));
+            treenode_free(term);
+            return NULL;
+        }
+        treenode_push(term, realterm);
         return term;
     }
 
     if (zparse_check(str, end, '(')) {
-        term = zparse_expr(*end, end);
-        if (!term) {
-            return NULL;
+        term = zparse_paren(str, end, &zparse_object);
+        if (term) {
+            struct treenode* realterm = zparse_term(*end, end);
+            if (!realterm) {
+                zprintf("Expected term after type cast operator %s in expression.\n", tokbuf(term->data));
+                treenode_free(term);
+                return NULL;
+            }
+            treenode_push(term, realterm);
+            return term;
         }
 
-        if (!zparse_check(*end, end, ')')) {
-            treenode_free(term);
-            return NULL;
-        }
+        term = zparse_paren(str, end, &zparse_expr);
+        return term;
+    }
 
+    term = zparse_sizeof(str, end);
+    if (term) {
         return term;
     }
 
@@ -577,6 +603,15 @@ static struct treenode* zparse_expr_rhs(const char* str, char** end, struct tree
     int next_precedence, precedence;
 
     lookahead = toknext(str);
+    if (lookahead.str[0] == '?') {
+        op = zparse_operator_ternary(*end, end);
+        if (!op) {
+            return NULL;
+        }
+        treenode_push(op, lhs);
+        return op;
+    }
+
     precedence = token_precedence(lookahead.str);
 
     while (precedence != -1 && precedence <= min_precedence) {
@@ -594,6 +629,16 @@ static struct treenode* zparse_expr_rhs(const char* str, char** end, struct tree
         
         lookahead = toknext(*end);
         next_precedence = token_precedence(lookahead.str);
+
+        if (lookahead.str[0] == '?') {
+            op = zparse_operator_ternary(lookahead.str, end);
+            if (!op) {
+                break;
+            }
+            treenode_push(op, lhs);
+            lhs = op;
+            continue;
+        }
 
         while (next_precedence != -1 && next_precedence < precedence) {
             rhs = zparse_expr_rhs(*end, end, rhs, precedence - 1);
@@ -614,7 +659,7 @@ static struct treenode* zparse_expr_rhs(const char* str, char** end, struct tree
 struct treenode* zparse_expr(const char* str, char** end)
 {
     struct treenode* lhs = zparse_term(str, end);
-    return lhs ? zparse_expr_rhs(*end, end, lhs, 17) : NULL;
+    return lhs ? zparse_expr_rhs(*end, end, lhs, 20) : NULL;
 }
 
 struct treenode* zparse_constexpr(const char* str, char** end)
@@ -624,8 +669,12 @@ struct treenode* zparse_constexpr(const char* str, char** end)
         struct token* tok;
         ast_reduce(expr);
         tok = expr->data;
-        if (tok->type != TOK_DEF && tok->type != TOK_NUM) {
-            zprintf("Expected constant intergal expression.\n");
+        if (tok->type != TOK_DEF && tok->type != TOK_NUM && tok->str[0] != '\'') {
+            static const char sizeofstr[] = "sizeof";
+            if ((tok->len == sizeof(sizeofstr) - 1 && !zmemcmp(tok->str, sizeofstr, sizeof(sizeofstr) - 1)) || 
+                (tok->str[0] == '&' && tok->len == 1)) {
+                return expr;
+            }
             treenode_free(expr);
             expr = NULL;
         }
@@ -724,15 +773,18 @@ struct treenode* zparse_count(const char* str, char** end, parser_f parser, cons
 
 struct treenode* zparse_paren(const char* str, char** end, parser_f parser)
 {
+    char* mark = *end;
     if (zparse_check(str, end, '(')) {
         struct treenode* node = parser(*end, end);
         if (!node) {
+            *end = mark;
             return NULL;
         }
         
         if (!zparse_check(*end, end, ')')) {
             zprintf("Expected closing parenthesis.\n");
             treenode_free(node);
+            *end = mark;
             return NULL;
         }
         
@@ -769,7 +821,7 @@ struct treenode* zparse_sizeness(const char* str, char** end)
 
 struct treenode* zparse_type(const char* str, char** end)
 {
-    static const char* keywords[] = {"char", "int", "float", "double", "void", NULL};
+    static const char* keywords[] = {"char", "int", "float", "double", "void", "size_t", "parser_f", NULL};
     return zparse_keywords(str, end, keywords);
 }
 
@@ -810,7 +862,7 @@ struct treenode* zparse_list(const char* str, char** end)
         struct treenode* list;
         tok = tokstr("{}");
         list = treenode_create(&tok, sizeof(struct token));
-        zparse_enum(*end, end, &zparse_constexpr, ',', list);
+        zparse_enum(*end, end, &zparse_expr, ',', list);
         if (!zparse_check(*end, end, '}')) {
             zprintf("Expected } after initializer list.\n");
             treenode_free(list);
@@ -875,37 +927,27 @@ struct treenode* zparse_objenum(const char* str, char** end)
     return enumnode;
 }
 
+struct treenode* zparse_varid(const char* str, char** end);
 struct treenode* zparse_declargs(const char* str, char** end);
 
 struct treenode* zparse_funcptr(const char* str, char** end)
 {
-    if (zparse_check(str, end, '(') && zparse_check(*end, end, '*')) {
-        struct treenode* identifier, *array;
-        identifier = zparse_identifier(*end, end);
-        if (!identifier) {
-            return NULL;
-        }
-
-        array = zparse_array(*end, end);
-        if (array) {
-            treenode_push(identifier, array);
-        }
-
-        if (!zparse_check(*end, end, ')') || !zparse_check(*end, end, '(')) {
+    struct treenode* varid = zparse_paren(str, end, &zparse_varid);
+    if (varid) {
+        if (!zparse_check(*end, end, '(')) {
             zprintf("Invalid syntax for function pointers.\n");
-            treenode_free(identifier);
+            treenode_free(varid);
             return NULL;
         }
 
-        zparse_enum(*end, end, &zparse_declargs, ',', identifier);
+        zparse_enum(*end, end, &zparse_declargs, ',', varid);
         if (!zparse_check(*end, end, ')')) {
             zprintf("Expected ) after function pointer declaration.\n");
-            treenode_free(identifier);
-            return NULL;
+            treenode_free(varid);
+            varid = NULL;
         }
-        return identifier;
     }
-    return NULL;
+    return varid;
 }
 
 struct treenode* zparse_exprdecl(const char* str, char** end)
@@ -982,21 +1024,17 @@ struct treenode* zparse_object(const char* str, char** end)
     return object;
 }
 
-struct treenode* zparse_variable(const char* str, char** end)
+struct treenode* zparse_varid(const char* str, char** end)
 {
-    struct treenode* identifier, *indirection, *array, *assignment;
+    struct treenode* identifier, *indirection, *array;
     indirection = zparse_indirection(str, end);
 
     identifier = zparse_identifier(indirection ? *end : str, end);
     if (!identifier) {
-        struct treenode* funcptr = zparse_funcptr(indirection ? *end : str, end);
-        if (!funcptr) {
-            if (indirection) {
-                treenode_free(indirection);   
-            }
-            return NULL;
+        if (indirection) {
+            treenode_free(indirection);
         }
-        identifier = funcptr;
+        return NULL;
     }
 
     if (indirection) {
@@ -1008,12 +1046,41 @@ struct treenode* zparse_variable(const char* str, char** end)
         treenode_push(identifier, array);
     }
 
-    assignment = zparse_assignment(*end, end, &zparse_exprdecl);
-    if (assignment) {
-        treenode_push(identifier, assignment);
+    return identifier;
+}
+
+struct treenode* zparse_funcid(const char* str, char** end)
+{
+    struct treenode* indirection = zparse_char(str, end, '*');
+    if (indirection) {
+        struct treenode* varid = zparse_varid(*end, end);
+        if (!varid) {
+            treenode_free(indirection);
+            return NULL;
+        }
+        treenode_push(varid, indirection);
+        indirection = varid;
+    }
+    return indirection;
+}
+
+struct treenode* zparse_variable(const char* str, char** end)
+{
+    struct treenode* var, *assignment;
+    var = zparse_varid(str, end);
+    if (!var) {
+        var = zparse_funcptr(str, end);
+        if (!var) {
+            return NULL;
+        }
     }
 
-    return identifier;
+    assignment = zparse_assignment(*end, end, &zparse_exprdecl);
+    if (assignment) {
+        treenode_push(var, assignment);
+    }
+
+    return var;
 }
 
 struct treenode* zparse_decl(const char* str, char** end)
@@ -1026,13 +1093,28 @@ struct treenode* zparse_decl(const char* str, char** end)
         NULL
     };
 
-    struct treenode** chain, *type;
+    struct treenode** chain, *type, *indirection = NULL;
     chain = zparse_chain(str, end, parsers);
     type = zparse_object(chain ? *end : str, end);
-    
-    if (type && chain) {
+
+    if (!type) {
+        if (!chain) {
+            return NULL;
+        } else {
+            struct token tok = tokstr("int");
+            type = treenode_create(&tok, sizeof(struct token));
+            indirection = zparse_indirection(*end, end);
+        }
+    }
+
+    if (chain) {
+        indirection = indirection ? indirection : type->children[0];
         zfree(type->children);
         type->children = chain;
+    }
+
+    if (indirection) {
+        treenode_push(type, indirection);
     }
 
     return type;
@@ -1043,23 +1125,17 @@ struct treenode* zparse_declstat(const char* str, char** end)
     struct treenode* decl = zparse_decl(str, end);
     if (decl) {
         struct token tok;
-        struct treenode* vars, *parent;
+        struct treenode *parent;
         
         tok = tokstr(":=");
         parent = treenode_create(&tok, sizeof(struct token));
         treenode_push(parent, decl);
         decl = parent;
         
-        vars = zparse_enum(*end, end, &zparse_variable, ',', decl);
-        if (!vars) {
-            zprintf("%s\n", *end);
-            zprintf("Expected expression after declaration keywords.\n");
-            treenode_free(decl);
-            return NULL;
-        }
-
+        zparse_enum(*end, end, &zparse_variable, ',', decl);
         if (!zparse_check(*end, end, ';')) {
-            zprintf("Expected ';' at the end of variable declaration.\n");
+            zprintf("Expected ';' at the end of declaration.\n");
+            zprintf("%s\n", *end);
             treenode_free(decl);
             return NULL;
         }
@@ -1114,8 +1190,6 @@ struct treenode* zparse_exprstat(const char* str, char** end)
 
         if (!zparse_check(*end, end, ';')) {
             zprintf("Expected ';' after expression inside scope.\n");
-            treenode_print(expr, 0);
-            zprintf("%s\n", *end);
             treenode_free(expr);
             return NULL;
         }
@@ -1333,6 +1407,17 @@ struct treenode* zparse_label(const char* str, char** end)
     return label;
 }
 
+struct treenode* zparse_continue(const char* str, char** end)
+{
+    struct treenode* contnode = zparse_token(str, end, "continue");
+    if (contnode && !zparse_check(*end, end, ';')) {
+        zprintf("Expected semicolon after continue keyword.\n");
+        treenode_free(contnode);
+        return NULL;
+    }
+    return contnode;
+}
+
 struct treenode* zparse_break(const char* str, char** end)
 {
     struct treenode* breaknode = zparse_token(str, end, "break");
@@ -1351,6 +1436,7 @@ struct treenode* zparse_case(const char* str, char** end)
         struct treenode* constexpr = zparse_constexpr(*end, end);
         if (!constexpr) {
             zprintf("Expected constant expression after case keyword.\n");
+            zprintf("%s\n", *end);
             treenode_free(casenode);
             return NULL;
         }
@@ -1441,6 +1527,7 @@ struct treenode* zparse_loopstat(const char* str, char** end)
 {
     static const parser_f parsers[] = {
         &zparse_break,
+        &zparse_continue,
         &zparse_stat,
         &zparse_loopscope,
         NULL
@@ -1536,7 +1623,6 @@ struct treenode* zparse_funcsign(const char* str, char** end)
         zparse_enum(*end, end, &zparse_declargs, ',', decl);
         if (!zparse_check(*end, end, ')')) {
             zprintf("Expected ) after function parameter declaration.\n");
-            treenode_print(decl, 0);
             treenode_free(decl);
             return NULL;
         }
@@ -1645,6 +1731,7 @@ int main(const int argc, const char** argv)
 
     ast = zparse_module(module, &end);
     treenode_print(ast, 0);
+    
     if (ast && *end) {
         zprintf("Unconsummed: '%s'\n", end);
     }
