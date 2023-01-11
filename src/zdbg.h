@@ -6,12 +6,13 @@
 #ifndef NDEBUG
 
 #include <zintrinsics.h>
+#include <ztoken.h>
 #include <zio.h>
 
 #define ZBUG zcc_log("BUG(%s, %s, %ld)!\n", __FILE__, __FUNCTION__, __LINE__);
 
 __attribute__((unused))
-static void zcc_logtok(const char* fmt, const ztok_t tok)
+static void zcc_logtok(const char* fmt, const struct token tok)
 {
     zcc_log(fmt, zstrbuf(tok.str, tok.len));
 }

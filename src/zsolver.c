@@ -1,42 +1,21 @@
 #include <zsolver.h>
-#include <zintrinsics.h>
 #include <zlexer.h>
-#include <zdbg.h>
+#include <ztoken.h>
+#include <zassert.h>
 
-static int oppres(const ztok_t tok)
-{
-    switch (*tok.str) {
-        case ')':
-        case '(': return 0;
-        case '!': return 3 + 7 * (tok.str[1] == '=');
-        case '*':
-        case '/':
-        case '%': return 5;
-        case '+':
-        case '-': return 3 + 3 * (tok.str[1] != tok.str[0] && tok.kind != ZTOK_SYM_OP_UNARY);
-        case '<':
-        case '>': return 9 - 2 * (tok.str[1] == tok.str[0]);
-        case '=': return 10;
-        case '^': return 12;
-        case '&': return 11 + 3 * (tok.str[1] == tok.str[0]);
-        case '|': return 13 + 2 * (tok.str[1] == tok.str[0]);
-    }
-    return 16;
-}
-
-static long op1(const long l, const char* p)
+long zsolve_unary(const long l, const char* p)
 {
     switch (*p) {
         case '!': return !l;
         case '~': return ~l;
         case '-': return -l;
-        case '+': return l;
+        case '+': return +l;
     }
     zassert(0);
     return 0;
 }
 
-static long op2(const long l, const long r, const char* p)
+long zsolve_binary(const long l, const long r, const char* p)
 {
     switch (*p) {
         case '+': return l + r;
@@ -67,18 +46,72 @@ static long op2(const long l, const long r, const char* p)
                 return l != r;
             }
     }
-    zcc_log("SOLVER? -> '%s'\n", p);
     zassert(0);
     return 0;
 }
 
-long zcc_solve(const char* str)
+int zsolve_tree(const struct treenode* root, long* val)
+{
+    if (root) {
+        const struct token* op = root->data;
+        if (op->type == ZTOK_ID || op->type == ZTOK_STR) {
+            return 0;
+        }
+
+        if (op->type == ZTOK_NUM) {
+            *val = zatol(ztokbuf(op));
+            return 1;
+        }
+
+        if (op->type == ZTOK_SYM && *root->children) {
+            long l, r;
+            if (!zsolve_tree(root->children[0], &l)) {
+                return 0;
+            }
+
+            if (root->children[1]) {
+                if (!zsolve_tree(root->children[1], &r)) {
+                    return 0;
+                }
+                *val = zsolve_binary(l, r, op->str);
+            } else {
+                *val = zsolve_unary(l, op->str);
+            }
+            return 1;
+        }
+    }
+    return 0;
+}
+
+int zsolve_precedence(const char* str)
+{
+    if (!str) {
+        return -1;
+    }
+
+    switch (*str) {
+        case '!': return -1 + 11 * (str[1] == '=');
+        case '*':
+        case '/':
+        case '%': return 5 + 12 * (str[1] == '=');
+        case '+': return -1 + 7 * (str[1] != str[0]) + 11 * (str[1] == '=');
+        case '-': return -1 + 7 * (str[1] != str[0]) + 11 * (str[1] == '=') - 7 * (str[1] == '>');
+        case '<':
+        case '>': return 9 - 2 * (str[1] == str[0]);
+        case '=': return 17 - 7 * (str[1] == str[0]);
+        case '&': return 11 + 6 * (str[1] == '=') + 3 * (str[1] == str[0]);
+        case '^': return 12 + 5 * (str[1] == '=');
+        case '|': return 13 + 4 * (str[1] == '=') + 2 * (str[1] == str[0]);
+        default: return -1;
+    }
+}
+
+long zsolve_stack(const char* str)
 {
     long out[0xff], outcount = 0, stackcount = 0, n, u = 1;
-    ztok_t stack[0xff], tok = ztok_get(str);
+    struct token stack[0xff], tok = ztok_get(str);
 
     while (tok.str) {
-        /*zcc_log("%s\n", tok.str);*/
         zassert(!_isalpha(*tok.str));
         switch (*tok.str) {
             case 0:
@@ -94,25 +127,25 @@ long zcc_solve(const char* str)
                 break;
             case ')':
                 while (stackcount && *stack[stackcount - 1].str != '(') {
-                    if (stack[stackcount - 1].kind == ZTOK_SYM_OP_UNARY) {
-                        out[outcount - 1] = op1(out[outcount - 1], stack[--stackcount].str);
+                    if (stack[stackcount - 1].type == ZTOK_SYM_OP_UNARY) {
+                        out[outcount - 1] = zsolve_unary(out[outcount - 1], stack[--stackcount].str);
                         continue;
                     }
                     n = out[--outcount];
-                    out[outcount - 1] = op2(out[outcount - 1], n, stack[--stackcount].str);
+                    out[outcount - 1] = zsolve_binary(out[outcount - 1], n, stack[--stackcount].str);
                 }
                 stackcount = stackcount ? stackcount - 1: stackcount;
                 break;
             default:
-                tok.kind = u ? ZTOK_SYM_OP_UNARY : ZTOK_SYM_OP_RIGHT;
+                tok.type = u ? ZTOK_SYM_OP_UNARY : ZTOK_SYM_OP_RIGHT;
                 while (stackcount && *stack[stackcount - 1].str != '(' &&
-                    oppres(tok) >= oppres(stack[stackcount - 1])) {
-                    if (stack[stackcount - 1].kind == ZTOK_SYM_OP_UNARY) {
-                        out[outcount - 1] = op1(out[outcount - 1], stack[--stackcount].str);
+                    zsolve_precedence(tok.str) >= zsolve_precedence(stack[stackcount - 1].str)) {
+                    if (stack[stackcount - 1].type == ZTOK_SYM_OP_UNARY) {
+                        out[outcount - 1] = zsolve_unary(out[outcount - 1], stack[--stackcount].str);
                         continue;
                     }
                     n = out[--outcount];
-                    out[outcount - 1] = op2(out[outcount - 1], n, stack[--stackcount].str);
+                    out[outcount - 1] = zsolve_binary(out[outcount - 1], n, stack[--stackcount].str);
                 }
                 stack[stackcount++] = tok;
                 ++u;
@@ -120,26 +153,14 @@ long zcc_solve(const char* str)
         tok = ztok_nextl(tok);
     }
 
-    /*long i;
-    for (i = 0; i < outcount; ++i) {
-        zcc_log("[%zu] ", out[i]);
-    }
-    zcc_log("\n");
-
-    for (i = 0; i < stackcount; ++i) {
-        zcc_log("{%s} ", stack[i].str);
-    }
-    zcc_log("\n");*/
-
     while (stackcount) {
-        if (stack[stackcount - 1].kind == ZTOK_SYM_OP_UNARY) {
-            out[outcount - 1] = op1(out[outcount - 1], stack[--stackcount].str);
+        if (stack[stackcount - 1].type == ZTOK_SYM_OP_UNARY) {
+            out[outcount - 1] = zsolve_unary(out[outcount - 1], stack[--stackcount].str);
             continue;
         }
         n = out[--outcount];
-        out[outcount - 1] = op2(out[outcount - 1], n, stack[--stackcount].str);
+        out[outcount - 1] = zsolve_binary(out[outcount - 1], n, stack[--stackcount].str);
     }
-    /*zcc_log("%s\n", str);
-    zcc_log("Result: %ld\n", out[outcount - 1]);*/
+
     return out[0];
 }

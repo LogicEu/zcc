@@ -14,7 +14,7 @@ extern void zmalloc_inspect(void);
 static int zcc_defines_define(struct map* defines, const char* str)
 {
     char* eq, *s;
-    ztok_t tok = ztok_get(str);
+    struct token tok = ztok_get(str);
     eq = zstrchr(str, '=');
     s = zstrbuf(tok.str, tok.len);
 
@@ -23,8 +23,8 @@ static int zcc_defines_define(struct map* defines, const char* str)
         zcc_log("%s, %s\n", s, tok.str + tok.len);
         return zcc_defines_push(defines, s, tok.str + tok.len);
     }
-    zcc_log("%s, %s\n", s, "1");
     
+    zcc_log("%s, %s\n", s, "1");
     return zcc_defines_push(defines, s, "1");
 }
 
@@ -38,6 +38,7 @@ int main(const int argc, const char** argv)
     
     struct vector infiles, includes;
     struct map defines = zcc_defines_std();
+
     infiles = vector_create(sizeof(char*));
     includes = zcc_includes_std();
 
@@ -100,6 +101,7 @@ int main(const int argc, const char** argv)
     for (i = 0; i < filecount; ++i) {
         src = zcc_fread(filepaths[i], &len);
         if (src) {
+            struct treenode* ast;
             src = zcc_preprocess_text(src, &len);
             if (preproc) {
                 src = zcc_preprocess_macros(src, &len, &defines, includes.data);
@@ -108,7 +110,12 @@ int main(const int argc, const char** argv)
             if (ppprint) {
                 zcc_log("%s\n", src);
             }
-            /* zcc_parse(src); */
+
+            ast = zparse_source(src);
+            if (ast) {
+                zparse_tree_print(ast, 0);
+                zparse_free(ast);
+            }
             zfree(src);
         }
         else zcc_log("zcc could not open translation unit '%s'.\n", filepaths[i]);

@@ -1,53 +1,50 @@
 #ifndef ZCC_PARSER_H
 #define ZCC_PARSER_H
 
-#include <zstddef.h>
-#include <zlexer.h>
-#include <utopia/utopia.h>
+/*** GRAMMAR ***
 
-#define ZKEY_AUTO 0
-#define ZKEY_BREAK 1
-#define ZKEY_CASE 2
-#define ZKEY_CHAR 3
-#define ZKEY_CONST 4
-#define ZKEY_CONTINUE 5
-#define ZKEY_DEFAULT 6
-#define ZKEY_DO 7
-#define ZKEY_DOUBLE 8
-#define ZKEY_ELSE 9
-#define ZKEY_ENUM 10
-#define ZKEY_EXTERN 11
-#define ZKEY_FLOAT 12
-#define ZKEY_FOR 13
-#define ZKEY_GOTO 14
-#define ZKEY_IF 15
-#define ZKEY_INT 16
-#define ZKEY_LONG 17
-#define ZKEY_REGISTER 18
-#define ZKEY_RETURN 19
-#define ZKEY_SHORT 20
-#define ZKEY_SIGNED 21
-#define ZKEY_SIZEOF 22
-#define ZKEY_STATIC 23
-#define ZKEY_STRUCT 24
-#define ZKEY_SWITCH 25
-#define ZKEY_TYPEOF 26
-#define ZKEY_UNION 27
-#define ZKEY_UNSIGNED 28
-#define ZKEY_VOID 29
-#define ZKEY_VOLATILE 30
-#define ZKEY_WHILE 31
+enum(x, char) := x | x char enum(x, char)
+optional(x) := x | EMPTY
+opt(x) := optional(x)
+or(x, y) := x | y
 
-#include <zintrinsics.h>
+file := <func> <file> | <decl-statement> <file> | EMTPY
+funcdecl := <func-signature> ';'
+funcdef := <func-signature> <scope>
+func-signature := <decl> <identifier> '(' enum(decl, ',') ')'
+func-arguments := <decl> <identifier> '(' enum(decl <identifier>, ',') ')'
 
-typedef struct znode_t {
-    ztok_t token;
-    struct vector children;
-} znode_t;
+scope := '{' <body> '}' | EMPTY
+body := opt<decl-statement> opt(enum(statement, (';')))
+statement := <expr> ';' | <if-statement> | <for-statement> | <while-statement> | <do-statement> | <return-statement> | <scope>
 
-int zcc_parse(const char* str);
-znode_t znode_create(ztok_t tok);
-void znode_connect(znode_t* parent, const znode_t* child);
-void znode_free(znode_t* node);
+if-statement := "if" '(' <expr> ')' <scope> opt<else->statement>
+else-statement := "else" optional<if-statement> <scope>
+switch-statement := "switch"
+for-statement := "for" '(' <expr> ';' <expr> ';' <expr> ')' <scope>
+while-statement := "while" '(' <expr> ')' <scope>
+do-statement := "do" <scope> "while" '(' <expr> ')'
+return-statement := "return" <expr> ';'
+
+decl-statement := <decl> enum(var, ',') ';'
+decl := <storage> <qualifier> <signed> <size> <type>
+var := <identifier> | <identifier> '=' <expr>
+
+storage := "static" | "extern" | "register" | EMPTY
+qualifier := "const" | "volatile" | EMPTY
+signed := "signed" | "unsigned" | EMPTY
+size := "short" | "long" | EMPTY
+indirection := '*' <qualifier> | EMPTY
+type := <indirection> <type> |  ("char" | "int" | "void") | EMPTY
+
+*/
+
+#include <utopia/tree.h>
+
+void zparse_tree_print(const struct treenode* node, const size_t lvl);
+void zparse_free(struct treenode* node);
+void zparse_reduce(struct treenode* node);
+struct treenode* zparse_source(const char* str);
+struct treenode* zparse_module(const char* str, char** end);
 
 #endif /* ZCC_PARSER_H */

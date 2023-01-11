@@ -132,8 +132,16 @@ char* zcc_lexop(const char* str)
     return (char*)(size_t)str;
 }
 
-int zcc_lextype(const char* str)
+static unsigned int zlex_type(const char* str)
 {
+    if (!str || !*str) {
+        return ZTOK_NULL;
+    }
+
+    if (!_isgraph(*str)) {
+        return ZTOK_NON;
+    }
+
     if (_isstr(*str)) {
         return ZTOK_STR;
     }
@@ -155,7 +163,22 @@ int zcc_lextype(const char* str)
 
 /* Main generic tokenization function */
 
-char* zcc_lex(const char* str, size_t* len, int* flag)
+char* zlex_next(const char* str, unsigned int* typeptr)
+{
+    static char* (*zlex_funcs[])(const char*) = {
+        &zcc_lexnull,
+        &zcc_lexid,
+        &zcc_lexnum,
+        &zcc_lexop,
+        &zcc_lexstr,
+        &zcc_lexnone
+    };
+    
+    *typeptr = zlex_type(str);
+    return zlex_funcs[*typeptr](str);
+}
+
+char* zcc_lex(const char* str, unsigned int* len, unsigned int* typeptr)
 {
     static char* (*zlex_funcs[5])(const char*) = {
         &zcc_lexnull,
@@ -165,9 +188,8 @@ char* zcc_lex(const char* str, size_t* len, int* flag)
         &zcc_lexstr
     };
 
-    int type;
-    const char* c;
 
+    const char* c;
     if (str) {
         str = zcc_lexspace(str);
     }
@@ -177,51 +199,31 @@ char* zcc_lex(const char* str, size_t* len, int* flag)
     }
 
     c = str;
-    type = (zcc_lextype(str) >> 8);
-
-    str = zlex_funcs[type](str);
+    *typeptr = zlex_type(str);
+    str = zlex_funcs[*typeptr](str);
     *len = str - c;
-    *flag = type;
     
     return (char*)(size_t)c;
 }
 
 /* Handy struct to handle tokens */
 
-ztok_t ztok_get(const char* str)
+struct token ztok_get(const char* str)
 {
-    ztok_t tok;
-    tok.str = zcc_lex(str, &tok.len, &tok.kind);
+    struct token tok;
+    tok.str = zcc_lex(str, &tok.len, &tok.type);
     return tok;
 }
 
-ztok_t ztok_next(ztok_t tok)
+struct token ztok_next(struct token tok)
 {
-    tok.str = zcc_lex(tok.str + tok.len + (tok.str[tok.len] == '\n'), &tok.len, &tok.kind);
+    tok.str = zcc_lex(tok.str + tok.len + (tok.str[tok.len] == '\n'), &tok.len, &tok.type);
     return tok;
 }
 
-ztok_t ztok_nextl(ztok_t tok)
+struct token ztok_nextl(struct token tok)
 {
-    tok.str = zcc_lex(tok.str + tok.len, &tok.len, &tok.kind);
-    return tok;
-}
-
-ztok_t ztok_step(ztok_t tok, const size_t steps)
-{
-    size_t i;
-    for (i = 0; i < steps; ++i) {
-        tok = ztok_next(tok);
-    }
-    return tok;
-}
-
-ztok_t ztok_stepl(ztok_t tok, const size_t steps)
-{
-    size_t i;
-    for (i = 0; i < steps; ++i) {
-        tok = ztok_nextl(tok);
-    }
+    tok.str = zcc_lex(tok.str + tok.len, &tok.len, &tok.type);
     return tok;
 }
 
@@ -229,8 +231,8 @@ ztok_t ztok_stepl(ztok_t tok, const size_t steps)
 
 struct vector zcc_tokenize(const char* str)
 {
-    ztok_t tok;
-    struct vector tokens = vector_create(sizeof(ztok_t));
+    struct token tok;
+    struct vector tokens = vector_create(sizeof(struct token));
     tok = ztok_get(str);
     while (tok.str) {
         vector_push(&tokens, &tok);
@@ -241,8 +243,8 @@ struct vector zcc_tokenize(const char* str)
 
 struct vector zcc_tokenize_line(const char* str)
 {
-    ztok_t tok;
-    struct vector tokens = vector_create(sizeof(ztok_t));
+    struct token tok;
+    struct vector tokens = vector_create(sizeof(struct token));
     tok = ztok_get(str);
     while (tok.str) {
         vector_push(&tokens, &tok);
@@ -253,8 +255,8 @@ struct vector zcc_tokenize_line(const char* str)
 
 struct vector zcc_tokenize_range(const char* start, const char* end)
 {
-    ztok_t tok;
-    struct vector tokens = vector_create(sizeof(ztok_t));
+    struct token tok;
+    struct vector tokens = vector_create(sizeof(struct token));
     tok = ztok_get(start);
     while (tok.str && tok.str < end) {
         vector_push(&tokens, &tok);
